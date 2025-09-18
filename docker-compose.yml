@@ -1,0 +1,28 @@
+version: "3.9"
+services:
+  inspector:
+    image: ghcr.io/modelcontextprotocol/inspector:latest
+    environment:
+      HOST: "0.0.0.0"
+    ports:
+      - "6274:6274"   # UI
+      - "6277:6277"   # proxy
+  vulners-mcp:
+    build: .
+    image: vulners-mcp:local
+    environment:
+      MCP_HOST: "0.0.0.0"
+      MCP_PORT: "8000"
+      MCP_HTTP_PATH: "/mcp/"
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python - <<'PY'\nimport socket,sys; s=socket.socket(); s.settimeout(1); s.connect(('localhost',8000)); s.close(); sys.exit(0)\nPY",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped

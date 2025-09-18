@@ -1,0 +1,9 @@
+.git
+__pycache__/
+*.py[cod]
+*.log
+.env
+.venv
+.cache
+dist/
+build/
