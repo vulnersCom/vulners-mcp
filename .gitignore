@@ -65,3 +65,5 @@ coverage.xml
 # IDEs
 .idea/
 .vscode/
+
+openapi.yaml

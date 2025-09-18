@@ -18,13 +18,41 @@ class BulletinPreview(BaseModel):
     modified: Optional[str] = None
     cvelist: Optional[List[str]] = None
     short_description: Optional[str] = None
-    model_config = {"extra": "allow"}  # allow extra keys
+    model_config = {"extra": "allow"}
 
 class LuceneSearchResponse(BaseModel):
     total: Optional[int] = None
     skip: Optional[int] = None
     size: Optional[int] = None
     results: List[BulletinPreview] = Field(default_factory=list)
+
+class CvssScore(BaseModel):
+    score: Optional[float] = None
+    severity: Optional[str] = None
+    vector: Optional[str] = None
+
+class WindowsAuditBulletin(BaseModel):
+    package: Optional[str] = None
+    published: Optional[str] = None
+    bulletinID: Optional[str] = None
+    cvelist: List[str] = Field(default_factory=list)
+    cvss: Optional[CvssScore] = None
+    fix: Optional[str] = None
+
+class LinuxPackageFinding(BaseModel):
+    package: Optional[str] = None
+    bulletinID: Optional[str] = None
+    cvelist: List[str] = Field(default_factory=list)
+    cvss: Optional[CvssScore] = None
+    fix: Optional[str] = None
+    model_config = {"extra": "allow"}
+
+class LinuxPackageAuditResponse(BaseModel):
+    packages: Dict[str, Dict[str, List[LinuxPackageFinding]]] = Field(default_factory=dict)
+    vulnerabilities: List[str] = Field(default_factory=list)
+    cvelist: List[str] = Field(default_factory=list)
+    cumulativeFix: Optional[str] = None
+    id: Optional[str] = None
 
 class IdSearchRequest(BaseModel):
     id: Union[str, List[str]]
@@ -101,12 +129,17 @@ class CpeSearchResponse(BaseModel):
     best_match: Optional[str] = None
     cpe: List[str] = Field(default_factory=list)
 
-class SupportedOSResponse(BaseModel):
-    operating_systems: List[str]
+class AutocompleteResponse(List[str]):
+    pass
 
 class CollectionEntry(BaseModel):
     id: Optional[str] = None
+    timestamps_updated: Optional[str] = Field(None, alias="timestamps.updated")
     model_config = {"extra": "allow"}
 
-class CollectionResponse(BaseModel):
-    RootModel: List[CollectionEntry]
+class CollectionResponse(List[CollectionEntry]):
+    pass
+
+class ErrorResponse(BaseModel):
+    code: str
+    message: str

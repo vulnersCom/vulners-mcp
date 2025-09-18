@@ -4,10 +4,14 @@ from typing import Any, Dict, Optional
 import asyncio
 
 from fastmcp import FastMCP
-from fastmcp.server.dependencies import get_http_headers  # access incoming HTTP headers
+from fastmcp.server.dependencies import get_http_headers
 
 from .settings import settings
-from .vulners_client import VulnersClient, ApiError
+from .vulners_client import VulnersClient
+from .models import (
+    LuceneSearchResponse, AutocompleteResponse, CpeSearchResponse,
+    LinuxPackageAuditResponse, WindowsAuditBulletin, ErrorResponse
+)
 
 
 # -------------------- FastMCP server config --------------------
@@ -61,7 +65,7 @@ async def _get_client() -> VulnersClient:
 
 # -------------------- Tools (no ctx param; headers auto-forwarded) --------------------
 @mcp.tool()
-async def search_lucene(body: Dict[str, Any]) -> Dict[str, Any]:
+async def search_lucene(body: Dict[str, Any]) -> LuceneSearchResponse:
     """Full-text search in Vulners Knowledge Base.
     Advanced vulnerability search tool using Lucene syntax to query a comprehensive database of over 4 million vulnerability bulletins from various sources.
 
@@ -131,7 +135,9 @@ async def search_lucene(body: Dict[str, Any]) -> Dict[str, Any]:
       JSON with "total", "results" (array of bulletins), and pagination info.
     """
     client = await _get_client()
-    return await client.search_lucene(body, headers=_forward_headers())
+    result = await client.search_lucene(body, headers=_forward_headers())
+    # TODO: fix model to match actual response structure
+    return result
 
 @mcp.tool()
 async def search_by_id(body: Dict[str, Any]) -> Dict[str, Any]:
@@ -328,7 +334,7 @@ async def audit_windows(body: Dict[str, Any]) -> Dict[str, Any]:
     return await client.audit_windows(body, headers=_forward_headers())
 
 @mcp.tool()
-async def audit_linux_packages(body: Dict[str, Any]) -> Dict[str, Any]:
+async def audit_linux_packages(body: Dict[str, Any]) -> LinuxPackageAuditResponse:
     """Linux package audit (RPM/DEB) for a given distro + version.
 
     Endpoint:
@@ -358,7 +364,9 @@ async def audit_linux_packages(body: Dict[str, Any]) -> Dict[str, Any]:
       and linked advisories. Use get_supported_os() to discover valid OS ids.
     """
     client = await _get_client()
-    return await client.audit_linux_packages(body, headers=_forward_headers())
+    result = await client.audit_linux_packages(body, headers=_forward_headers())
+    # TODO: fix model to match actual response structure
+    return result
 
 @mcp.tool()
 async def get_supported_os() -> Dict[str, Any]:
@@ -380,7 +388,7 @@ async def get_supported_os() -> Dict[str, Any]:
     return await client.get_supported_os(headers=_forward_headers())
 
 @mcp.tool()
-async def query_autocomplete(body: Dict[str, Any]) -> Dict[str, Any]:
+async def query_autocomplete(body: Dict[str, Any]) -> AutocompleteResponse:
     """Autocomplete helper for search inputs (vendors, products, CVEs, etc.).
 
     Endpoint:
@@ -401,10 +409,12 @@ async def query_autocomplete(body: Dict[str, Any]) -> Dict[str, Any]:
       JSON suggestions that can be fed into search_lucene() or search_cpe().
     """
     client = await _get_client()
-    return await client.query_autocomplete(body, headers=_forward_headers())
+    result = await client.query_autocomplete(body, headers=_forward_headers())
+    # TODO: fix model to match actual response structure
+    return result
 
 @mcp.tool()
-async def search_cpe(vendor: str, product: str, size: int | None = None) -> Dict[str, Any]:
+async def search_cpe(vendor: str, product: str, size: int | None = None) -> CpeSearchResponse:
     """Find CPE strings by vendor+product (latest schema).
 
     Endpoint:
@@ -425,7 +435,9 @@ async def search_cpe(vendor: str, product: str, size: int | None = None) -> Dict
       JSON with "best_match" and a "cpe" array of candidate CPE strings.
     """
     client = await _get_client()
-    return await client.search_cpe(vendor=vendor, product=product, size=size, headers=_forward_headers())
+    result = await client.search_cpe(vendor=vendor, product=product, size=size, headers=_forward_headers())
+    # TODO: fix model to match actual response structure
+    return result
 
 @mcp.tool()
 async def fetch_collection(type: str) -> Dict[str, Any]:
