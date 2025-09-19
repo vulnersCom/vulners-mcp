@@ -1,6 +1,6 @@
 # app/server.py
 from __future__ import annotations
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List, Union
 import asyncio
 
 from fastmcp import FastMCP
@@ -65,7 +65,7 @@ async def _get_client() -> VulnersClient:
 
 # -------------------- Tools (no ctx param; headers auto-forwarded) --------------------
 @mcp.tool()
-async def search_lucene(body: Dict[str, Any]) -> LuceneSearchResponse:
+async def search_lucene(query: str, skip: int = 0, size: int = 20, fields: Optional[List[str]] = None) -> LuceneSearchResponse:
     """Full-text search in Vulners Knowledge Base.
     Advanced vulnerability search tool using Lucene syntax to query a comprehensive database of over 4 million vulnerability bulletins from various sources.
 
@@ -135,12 +135,15 @@ async def search_lucene(body: Dict[str, Any]) -> LuceneSearchResponse:
       JSON with "total", "results" (array of bulletins), and pagination info.
     """
     client = await _get_client()
+    body = {"query": query, "skip": skip, "size": size}
+    if fields:
+        body["fields"] = fields
     result = await client.search_lucene(body, headers=_forward_headers())
     # TODO: fix model to match actual response structure
     return result
 
 @mcp.tool()
-async def search_by_id(body: Dict[str, Any]) -> Dict[str, Any]:
+async def search_by_id(id: Union[str, List[str]], references: Optional[bool] = None, fields: Optional[List[str]] = None) -> Dict[str, Any]:
     """Fetch full bulletin(s) by CVE or Vulners ID.
     Retrieve complete detailed information for a specific vulnerability bulletin using its unique identifier.
 
@@ -200,6 +203,11 @@ async def search_by_id(body: Dict[str, Any]) -> Dict[str, Any]:
       JSON bulletin object (single id) or id→bulletin mapping (multiple ids).
     """
     client = await _get_client()
+    body = {"id": id}
+    if references is not None:
+        body["references"] = references
+    if fields:
+        body["fields"] = fields
     return await client.search_by_id(body, headers=_forward_headers())
 
 @mcp.tool()
@@ -334,7 +342,12 @@ async def audit_windows(body: Dict[str, Any]) -> Dict[str, Any]:
     return await client.audit_windows(body, headers=_forward_headers())
 
 @mcp.tool()
-async def audit_linux_packages(body: Dict[str, Any]) -> LinuxPackageAuditResponse:
+async def audit_linux_packages(
+    os: str,
+    version: str,
+    package: List[str],
+    include_candidates: Optional[bool] = None
+) -> LinuxPackageAuditResponse:
     """Linux package audit (RPM/DEB) for a given distro + version.
 
     Endpoint:
@@ -364,6 +377,13 @@ async def audit_linux_packages(body: Dict[str, Any]) -> LinuxPackageAuditRespons
       and linked advisories. Use get_supported_os() to discover valid OS ids.
     """
     client = await _get_client()
+    body = {
+        "os": os,
+        "version": version,
+        "package": package
+    }
+    if include_candidates is not None:
+        body["include_candidates"] = include_candidates
     result = await client.audit_linux_packages(body, headers=_forward_headers())
     # TODO: fix model to match actual response structure
     return result
@@ -414,7 +434,7 @@ async def query_autocomplete(body: Dict[str, Any]) -> AutocompleteResponse:
     return result
 
 @mcp.tool()
-async def search_cpe(vendor: str, product: str, size: int | None = None) -> CpeSearchResponse:
+async def search_cpe(vendor: str, product: str, size: Optional[int] = None) -> CpeSearchResponse:
     """Find CPE strings by vendor+product (latest schema).
 
     Endpoint:
