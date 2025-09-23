@@ -9,6 +9,21 @@ variables:
 
 stages:
   - build
+  - deploy
+  - sync
 
 build:
   extends: .build-template
+
+deploy:prod:
+  extends: .deploy_template_argocd
+  needs: ["build"]
+  stage: deploy
+  variables:
+    APP: vulners_mcp
+    TARGET_IMAGE: ${COMMIT_IMAGE}
+
+sync:prod:api:
+  extends: .deploy_cluster_sync_template
+  stage: sync
+  needs: ["deploy:prod"]
