@@ -1,144 +1,173 @@
 from __future__ import annotations
-from typing import Any, Dict, List, Optional, Union
-from pydantic import BaseModel, Field, RootModel
+
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
+
 
 # ---- Search ----
 class LuceneSearchRequest(BaseModel):
     query: str
     skip: int | None = Field(default=0, ge=0)
     size: int | None = Field(default=20, ge=1, le=500)
-    fields: Optional[List[str]] = None
+    fields: list[str] | None = None
+
 
 class BulletinPreview(BaseModel):
-    id: Optional[str] = None
-    title: Optional[str] = None
-    type: Optional[str] = None
-    href: Optional[str] = None
-    published: Optional[str] = None
-    modified: Optional[str] = None
-    cvelist: Optional[List[str]] = None
-    short_description: Optional[str] = None
-    model_config = {"extra": "allow"}
+    id: str | None = None
+    title: str | None = None
+    type: str | None = None
+    href: str | None = None
+    published: str | None = None
+    modified: str | None = None
+    cvelist: list[str] | None = None
+    short_description: str | None = None
+    model_config = ConfigDict(extra="allow")
+
 
 class LuceneSearchResponse(BaseModel):
-    total: Optional[int] = None
-    skip: Optional[int] = None
-    size: Optional[int] = None
-    results: List[BulletinPreview] = Field(default_factory=list)
+    total: int | None = None
+    skip: int | None = None
+    size: int | None = None
+    results: list[BulletinPreview] = Field(default_factory=list)
+
 
 class CvssScore(BaseModel):
-    score: Optional[float] = None
-    severity: Optional[str] = None
-    vector: Optional[str] = None
+    score: float | None = None
+    severity: str | None = None
+    vector: str | None = None
+
 
 class WindowsAuditBulletin(BaseModel):
-    package: Optional[str] = None
-    published: Optional[str] = None
-    bulletinID: Optional[str] = None
-    cvelist: List[str] = Field(default_factory=list)
-    cvss: Optional[CvssScore] = None
-    fix: Optional[str] = None
+    package: str | None = None
+    published: str | None = None
+    bulletinID: str | None = None
+    cvelist: list[str] = Field(default_factory=list)
+    cvss: CvssScore | None = None
+    fix: str | None = None
+
 
 class LinuxPackageFinding(BaseModel):
-    package: Optional[str] = None
-    bulletinID: Optional[str] = None
-    cvelist: List[str] = Field(default_factory=list)
-    cvss: Optional[CvssScore] = None
-    fix: Optional[str] = None
-    model_config = {"extra": "allow"}
+    package: str | None = None
+    bulletinID: str | None = None
+    cvelist: list[str] = Field(default_factory=list)
+    cvss: CvssScore | None = None
+    fix: str | None = None
+    model_config = ConfigDict(extra="allow")
+
 
 class LinuxPackageAuditResponse(BaseModel):
-    packages: Dict[str, Dict[str, List[LinuxPackageFinding]]] = Field(default_factory=dict)
-    vulnerabilities: List[str] = Field(default_factory=list)
-    cvelist: List[str] = Field(default_factory=list)
-    cumulativeFix: Optional[str] = None
-    id: Optional[str] = None
+    packages: dict[str, dict[str, list[LinuxPackageFinding]]] = Field(
+        default_factory=dict
+    )
+    vulnerabilities: list[str] = Field(default_factory=list)
+    cvelist: list[str] = Field(default_factory=list)
+    cumulativeFix: str | None = None
+    id: str | None = None
+
 
 class IdSearchRequest(BaseModel):
-    id: Union[str, List[str]]
-    references: Optional[bool] = None
-    fields: Optional[List[str]] = None
+    id: str | list[str]
+    references: bool | None = None
+    fields: list[str] | None = None
+
 
 class BulletinFull(BaseModel):
-    id: Optional[str] = None
-    model_config = {"extra": "allow"}
+    id: str | None = None
+    model_config = ConfigDict(extra="allow")
 
-IdSearchResponse = Union[BulletinFull, Dict[str, BulletinFull]]
+
+IdSearchResponse = BulletinFull | dict[str, BulletinFull]
+
 
 # ---- Audit ----
 class CpeObject(BaseModel):
-    part: Optional[str] = None
-    vendor: Optional[str] = None
-    product: Optional[str] = None
-    version: Optional[str] = None
-    update: Optional[str] = None
-    language: Optional[str] = None
-    target_hw: Optional[str] = None
-    target_sw: Optional[str] = None
-    edition: Optional[str] = None
+    part: str | None = None
+    vendor: str | None = None
+    product: str | None = None
+    version: str | None = None
+    update: str | None = None
+    language: str | None = None
+    target_hw: str | None = None
+    target_sw: str | None = None
+    edition: str | None = None
 
-SoftwareItem = Union[str, CpeObject]
+
+SoftwareItem = str | CpeObject
+
 
 class AuditSoftwareRequest(BaseModel):
-    software: List[SoftwareItem]
-    match: Optional[str] = Field(default="partial")  # partial|full
-    fields: Optional[List[str]] = None
+    software: list[SoftwareItem]
+    match: str | None = Field(default="partial")  # partial|full
+    fields: list[str] | None = None
+
 
 class Vulnerability(BaseModel):
-    id: Optional[str] = None
-    title: Optional[str] = None
-    short_description: Optional[str] = None
-    model_config = {"extra": "allow"}
+    id: str | None = None
+    title: str | None = None
+    short_description: str | None = None
+    model_config = ConfigDict(extra="allow")
+
 
 class AuditResult(BaseModel):
-    input: Dict[str, Any] | Any
-    matched_criteria: Optional[str] = None
-    vulnerabilities: List[Vulnerability] = Field(default_factory=list)
+    input: dict[str, Any] | Any
+    matched_criteria: str | None = None
+    vulnerabilities: list[Vulnerability] = Field(default_factory=list)
+
 
 class WindowsKbAuditRequest(BaseModel):
     os: str
-    kbList: List[str]
+    kbList: list[str]
+
 
 class WindowsWinAuditSoftwareEntry(BaseModel):
     software: str
-    version: Optional[str] = None
-    sw_edition: Optional[str] = None
-    target_sw: Optional[str] = None
-    target_hw: Optional[str] = None
-    update: Optional[str] = None
-    language: Optional[str] = None
+    version: str | None = None
+    sw_edition: str | None = None
+    target_sw: str | None = None
+    target_hw: str | None = None
+    update: str | None = None
+    language: str | None = None
+
 
 class WindowsWinAuditRequest(BaseModel):
     os: str
     os_version: str
-    kbList: List[str]
-    software: List[WindowsWinAuditSoftwareEntry]
-    platform: Optional[str] = None
+    kbList: list[str]
+    software: list[WindowsWinAuditSoftwareEntry]
+    platform: str | None = None
+
 
 class LinuxPackageAuditRequest(BaseModel):
     os: str
     version: str
-    package: List[str]
-    include_candidates: Optional[bool] = None
+    package: list[str]
+    include_candidates: bool | None = None
+
 
 # ---- Basics / Collections ----
 class AutocompleteRequest(BaseModel):
     query: str
 
-class CpeSearchResponse(BaseModel):
-    best_match: Optional[str] = None
-    cpe: List[str] = Field(default_factory=list)
 
-class AutocompleteResponse(List[str]):
+class CpeSearchResponse(BaseModel):
+    best_match: str | None = None
+    cpe: list[str] = Field(default_factory=list)
+
+
+class AutocompleteResponse(list[str]):
     pass
+
 
 class CollectionEntry(BaseModel):
-    id: Optional[str] = None
-    timestamps_updated: Optional[str] = Field(None, alias="timestamps.updated")
-    model_config = {"extra": "allow"}
+    id: str | None = None
+    timestamps_updated: str | None = Field(None, alias="timestamps.updated")
+    model_config = ConfigDict(extra="allow")
 
-class CollectionResponse(List[CollectionEntry]):
+
+class CollectionResponse(list[CollectionEntry]):
     pass
+
 
 class ErrorResponse(BaseModel):
     code: str

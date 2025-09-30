@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict, Optional, List, Union
+from typing import Any, Dict, List, Optional, Union
 
 from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_headers
@@ -10,27 +10,21 @@ from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 
 from .models import (
-    LuceneSearchResponse, AutocompleteResponse, CpeSearchResponse,
-    LinuxPackageAuditResponse
+    AutocompleteResponse,
+    CpeSearchResponse,
+    LinuxPackageAuditResponse,
+    LuceneSearchResponse,
 )
-from .settings import settings
 from .vulners_client import VulnersClient
 
 # -------------------- FastMCP server config --------------------
 mcp = FastMCP("Vulners MCP")
-# Bind networking for the built-in Streamable HTTP server:
-mcp.settings.host = settings.host            # e.g. "0.0.0.0"
-mcp.settings.port = settings.port            # e.g. 8000
-# Many builds default to "/mcp/"; keep it explicit if your FastMCP exposes this setting:
-try:
-    mcp.settings.streamable_http_path = settings.streamable_http_path  # e.g. "/mcp/"
-except Exception:
-    pass
 
 
 # -------------------- Per-request auth header forwarding --------------------
 # Only forward auth-related headers; avoid hop-by-hop headers, etc.
 _FORWARDABLE = {"x-api-key", "authorization"}
+
 
 def _forward_headers() -> Dict[str, str] | None:
     """
@@ -53,6 +47,7 @@ def _forward_headers() -> Dict[str, str] | None:
 _client: VulnersClient | None = None
 _client_lock = asyncio.Lock()
 
+
 async def _get_client() -> VulnersClient:
     global _client
     if _client is not None:
@@ -67,7 +62,9 @@ async def _get_client() -> VulnersClient:
 
 # -------------------- Tools (no ctx param; headers auto-forwarded) --------------------
 @mcp.tool()
-async def search_lucene(query: str, skip: int = 0, size: int = 20, fields: Optional[List[str]] = None) -> LuceneSearchResponse:
+async def search_lucene(
+    query: str, skip: int = 0, size: int = 20, fields: Optional[List[str]] = None
+) -> LuceneSearchResponse:
     """Full-text search in Vulners Knowledge Base.
     Advanced vulnerability search tool using Lucene syntax to query a comprehensive database of over 4 million vulnerability bulletins from various sources.
 
@@ -144,8 +141,13 @@ async def search_lucene(query: str, skip: int = 0, size: int = 20, fields: Optio
     # TODO: fix model to match actual response structure
     return result
 
+
 @mcp.tool()
-async def search_by_id(id: Union[str, List[str]], references: Optional[bool] = None, fields: Optional[List[str]] = None) -> Dict[str, Any]:
+async def search_by_id(
+    id: Union[str, List[str]],
+    references: Optional[bool] = None,
+    fields: Optional[List[str]] = None,
+) -> Dict[str, Any]:
     """Fetch full bulletin(s) by CVE or Vulners ID.
     Retrieve complete detailed information for a specific vulnerability bulletin using its unique identifier.
 
@@ -212,6 +214,7 @@ async def search_by_id(id: Union[str, List[str]], references: Optional[bool] = N
         body["fields"] = fields
     return await client.search_by_id(body, headers=_forward_headers())
 
+
 @mcp.tool()
 async def audit_software(body: Dict[str, Any]) -> Dict[str, Any]:
     """Audit a list of software/CPEs for known vulnerabilities.
@@ -249,6 +252,7 @@ async def audit_software(body: Dict[str, Any]) -> Dict[str, Any]:
     client = await _get_client()
     return await client.audit_software(body, headers=_forward_headers())
 
+
 @mcp.tool()
 async def audit_host(body: Dict[str, Any]) -> Dict[str, Any]:
     """Context-aware host audit (OS + software) for known vulnerabilities.
@@ -283,6 +287,7 @@ async def audit_host(body: Dict[str, Any]) -> Dict[str, Any]:
     client = await _get_client()
     return await client.audit_host(body, headers=_forward_headers())
 
+
 @mcp.tool()
 async def audit_windows_kb(body: Dict[str, Any]) -> Dict[str, Any]:
     """Audit a Windows system by installed KBs (patches).
@@ -307,6 +312,7 @@ async def audit_windows_kb(body: Dict[str, Any]) -> Dict[str, Any]:
     """
     client = await _get_client()
     return await client.audit_windows_kb(body, headers=_forward_headers())
+
 
 @mcp.tool()
 async def audit_windows(body: Dict[str, Any]) -> Dict[str, Any]:
@@ -343,12 +349,10 @@ async def audit_windows(body: Dict[str, Any]) -> Dict[str, Any]:
     client = await _get_client()
     return await client.audit_windows(body, headers=_forward_headers())
 
+
 @mcp.tool()
 async def audit_linux_packages(
-    os: str,
-    version: str,
-    package: List[str],
-    include_candidates: Optional[bool] = None
+    os: str, version: str, package: List[str], include_candidates: Optional[bool] = None
 ) -> LinuxPackageAuditResponse:
     """Linux package audit (RPM/DEB) for a given distro + version.
 
@@ -379,16 +383,13 @@ async def audit_linux_packages(
       and linked advisories. Use get_supported_os() to discover valid OS ids.
     """
     client = await _get_client()
-    body = {
-        "os": os,
-        "version": version,
-        "package": package
-    }
+    body = {"os": os, "version": version, "package": package}
     if include_candidates is not None:
         body["include_candidates"] = include_candidates
     result = await client.audit_linux_packages(body, headers=_forward_headers())
     # TODO: fix model to match actual response structure
     return result
+
 
 @mcp.tool()
 async def get_supported_os() -> Dict[str, Any]:
@@ -408,6 +409,7 @@ async def get_supported_os() -> Dict[str, Any]:
     """
     client = await _get_client()
     return await client.get_supported_os(headers=_forward_headers())
+
 
 @mcp.tool()
 async def query_autocomplete(body: Dict[str, Any]) -> AutocompleteResponse:
@@ -435,8 +437,11 @@ async def query_autocomplete(body: Dict[str, Any]) -> AutocompleteResponse:
     # TODO: fix model to match actual response structure
     return result
 
+
 @mcp.tool()
-async def search_cpe(vendor: str, product: str, size: Optional[int] = None) -> CpeSearchResponse:
+async def search_cpe(
+    vendor: str, product: str, size: Optional[int] = None
+) -> CpeSearchResponse:
     """Find CPE strings by vendor+product (latest schema).
 
     Endpoint:
@@ -457,9 +462,12 @@ async def search_cpe(vendor: str, product: str, size: Optional[int] = None) -> C
       JSON with "best_match" and a "cpe" array of candidate CPE strings.
     """
     client = await _get_client()
-    result = await client.search_cpe(vendor=vendor, product=product, size=size, headers=_forward_headers())
+    result = await client.search_cpe(
+        vendor=vendor, product=product, size=size, headers=_forward_headers()
+    )
     # TODO: fix model to match actual response structure
     return result
+
 
 @mcp.tool()
 async def fetch_collection(type: str) -> Dict[str, Any]:
@@ -483,6 +491,7 @@ async def fetch_collection(type: str) -> Dict[str, Any]:
     client = await _get_client()
     return await client.fetch_collection(type, headers=_forward_headers())
 
+
 @mcp.tool()
 async def fetch_collection_update(type: str, after_iso: str) -> Dict[str, Any]:
     """Incremental collection sync: items updated after a given timestamp.
@@ -504,7 +513,10 @@ async def fetch_collection_update(type: str, after_iso: str) -> Dict[str, Any]:
       JSON array of collection entries updated strictly after the provided timestamp.
     """
     client = await _get_client()
-    return await client.fetch_collection_update(type, after_iso, headers=_forward_headers())
+    return await client.fetch_collection_update(
+        type, after_iso, headers=_forward_headers()
+    )
+
 
 @mcp.tool()
 async def get_os_cve_archive(os: str, version: str) -> str:
@@ -531,8 +543,12 @@ async def get_os_cve_archive(os: str, version: str) -> str:
       Absolute file path (string) to the downloaded ZIP on the server.
     """
     client = await _get_client()
-    content = await client.get_os_cve_archive(os=os, version=version, headers=_forward_headers())
-    import tempfile, os as _os
+    content = await client.get_os_cve_archive(
+        os=os, version=version, headers=_forward_headers()
+    )
+    import os as _os
+    import tempfile
+
     fd, path = tempfile.mkstemp(prefix=f"{os}-{version}-", suffix=".zip")
     with _os.fdopen(fd, "wb") as f:
         f.write(content)
@@ -544,9 +560,10 @@ async def get_os_cve_archive(os: str, version: str) -> str:
 def health_ready() -> str:
     return "ok"
 
+
 @mcp.resource(
     uri="res://myservice/vulners_lucene_cheatsheet",
-    description="Vulners Lucene Search Tips for search_lucene tool"
+    description="Vulners Lucene Search Tips for search_lucene tool",
 )
 def vulners_lucene_cheatsheet_resource() -> str:
     return """
@@ -573,7 +590,7 @@ def vulners_lucene_cheatsheet_resource() -> str:
     - **Exact phrase**: "apache http server"
     - **Wildcards**: `*` (zero or more chars) and `?` (single char) — cannot be the first character. Example: `product:chrom?um*`
     - **Fuzzy**: `term~` or `term~1` (Levenshtein distance up to *N*).
-    - **Proximity**: "rce exploit"\~5 (terms within *n* words of each other)
+    - **Proximity**: "rce exploit"\\~5 (terms within *n* words of each other)
 
     ### Field scoping & modifiers
 
@@ -595,8 +612,8 @@ def vulners_lucene_cheatsheet_resource() -> str:
     2. **Sorting** — e.g., `order:cvss.score`.
     3. **Period** — append ``** *****only at the very end*** when a relative time window is required.
 
-    > **Important:** Never attach `last N days` to a field name.\
-    > ❌ `published:last 3 days` (invalid)\
+    > **Important:** Never attach `last N days` to a field name.\\
+    > ❌ `published:last 3 days` (invalid)\\
     > ✅ `order:published last 3 days`
 
     `published`, `modified`, and other date fields accept **absolute ISO dates or explicit ranges** (`published:[2025-01-01 TO *]`). Use `last N days` as a standalone token only.
@@ -767,7 +784,7 @@ def vulners_lucene_cheatsheet_resource() -> str:
     - **CVE ID & title**
     - **Product / vendor** (derived from `affectedSoftware` or CPE)
     - **Base CVSS & AI Score**
-    - **Exploit evidence** (bulletinFamily\:exploit or `enchantments.exploitation.wildExploited:true`)
+    - **Exploit evidence** (bulletinFamily\\:exploit or `enchantments.exploitation.wildExploited:true`)
     - **Published date**
     - **5‑sentence summary** taken from `description` (trimmed)
 
@@ -838,7 +855,7 @@ def vulners_lucene_cheatsheet_resource() -> str:
     - **references** — External links.
     - **cvelist** — CVE IDs linked to this document.
     - **viewCount** — Views on Vulners.
-    - **enchantments.short\_description**, **enchantments.tags** — AI‑generated summary & tags.
+    - **enchantments.short\\_description**, **enchantments.tags** — AI‑generated summary & tags.
 
     ### AI & linkage
 
@@ -855,7 +872,7 @@ def vulners_lucene_cheatsheet_resource() -> str:
     - **cpe**, **cpe23** — Deprecated simple CPE strings.
     - **affectedSoftware.[cpeName|version|operator|name]** — Parsed vendor/product/version triples.
     - **affectedConfiguration** — Raw configuration tree.
-    - **cpeConfiguration.**\* / cpeConfigurations.\*\*\* — Structured CPE applicability data (NVD and Vulners flavours). Use to reason about vulnerable versions & operators.
+    - **cpeConfiguration.**\\* / cpeConfigurations.\\*\\*\\* — Structured CPE applicability data (NVD and Vulners flavours). Use to reason about vulnerable versions & operators.
 
     ### Weakness classification
 
@@ -870,9 +887,10 @@ def vulners_lucene_cheatsheet_resource() -> str:
 
 """
 
+
 @mcp.resource(
     uri="res://myservice/searching_strategies_cheatsheet",
-    description="Vulners Searching Strategies Cheatsheet"
+    description="Vulners Searching Strategies Cheatsheet",
 )
 def vulners_searchin_strategies_cheatsheet_resource() -> str:
     return """
@@ -952,8 +970,6 @@ def vulners_searchin_strategies_cheatsheet_resource() -> str:
 @mcp.custom_route("/health", methods=["GET"])
 async def health_check(request: Request) -> PlainTextResponse:
     return PlainTextResponse("OK")
-
-
 
 
 # -------------------- Run built-in Streamable HTTP server --------------------

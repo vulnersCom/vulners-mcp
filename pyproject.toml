@@ -15,9 +15,14 @@ dependencies = [
     "starlette (==0.39.2)",
     "uvicorn (==0.30.6)",
     "fastmcp (>=2.12.3,<3.0.0)",
+    "pydantic-settings (>=2.11.0,<3.0.0)",
 ]
 
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.13.2"
+
