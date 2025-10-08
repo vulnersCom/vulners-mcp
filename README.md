@@ -48,7 +48,11 @@ Generate API key with scope "api" and use it with the library.
 You can run the MCP server via a Docker image from the registry:
 
 ```bash
-docker run -e VULNERS_API_KEY="your_api_key" -p 8000:8000 your‑docker‑registry/vulners‑mcp:latest
+docker run \
+  -e VULNERS_BASE_URL="https://vulners.com/api" \
+  -e VULNERS_API_KEY="your_api_key" \
+  -p 8000:8000 \
+  vulners/vulners-mcp:latest
 ```
 MCP server will be running at http://0.0.0.0:8000/mcp
 
@@ -58,14 +62,14 @@ MCP server will be running at http://0.0.0.0:8000/mcp
 git clone https://github.com/vulnersCom/vulners-mcp.git
 cd vulners-mcp
 poetry install 
-poetry run python -m app.server
+poetry run python -m vulners_mcp.server
 ```
 
 ### Install from PyPI
 
 ```bash
 pip install vulners-mcp
-vulners‑mcp   --vulners-base-url "$VULNERS_BASE_URL"   --vulners-api-key "$VULNERS_API_KEY"   --host "$FASTMCP_HOST"   --port "$FASTMCP_PORT"   --streamable-path "$FASTMCP_STREAMABLE_HTTP_PATH"
+vulners‑mcp --vulners-base-url "$VULNERS_BASE_URL"   --vulners-api-key "$VULNERS_API_KEY"   --host "$FASTMCP_HOST"   --port "$FASTMCP_PORT"   --streamable-path "$FASTMCP_STREAMABLE_HTTP_PATH"
 ```
 
 ---

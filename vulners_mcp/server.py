@@ -970,9 +970,3 @@ def vulners_searchin_strategies_cheatsheet_resource() -> str:
 @mcp.custom_route("/health", methods=["GET"])
 async def health_check(request: Request) -> PlainTextResponse:
     return PlainTextResponse("OK")
-
-
-# -------------------- Run built-in Streamable HTTP server --------------------
-if __name__ == "__main__":
-    # Clients (e.g., MCP Inspector) must connect to: http://<host>:<port>/mcp/
-    mcp.run(transport="streamable-http")

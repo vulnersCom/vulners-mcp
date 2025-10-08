@@ -1,11 +1,10 @@
 [project]
 name = "vulners-mcp"
-version = "0.1.0"
-description = ""
-authors = [
-    {name = "banzay021",email = "banzay@vulners.com"}
-]
+version = "1.0.1"
+description = "MCP interface server fronting the Vulners API (https://vulners.com)"
 readme = "README.md"
+authors = [{name = "Vulners Team", email = "dev@vulners.com"}]
+keywords = ["MCP", "security", "network", "vulners", "vulnerability", "CVE"]
 requires-python = ">=3.13,<4.0"
 dependencies = [
     "mcp[cli] (>=1.9.0,<2.0)",
