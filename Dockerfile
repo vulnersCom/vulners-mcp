@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 FROM python:3.13-slim
 
-LABEL io.modelcontextprotocol.server.name="io.github.vulnersCom/vulners-mcp""
+LABEL io.modelcontextprotocol.server.name="io.github.vulnersCom/vulners-mcp"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -20,7 +20,7 @@ COPY pyproject.toml poetry.lock* ./
 RUN poetry install --no-root --only main --no-ansi
 
 # app layer
-COPY app ./app
+COPY vulners_mcp ./vulners_mcp
 
 # non-root
 RUN useradd -u 10001 -m appuser
@@ -29,4 +29,4 @@ USER appuser
 EXPOSE 8000
 
 # Start the FastMCP server (Streamable HTTP at /mcp/)
-CMD ["python", "-m", "vulners_mcp.server"]
+CMD ["python", "-m", "vulners_mcp"]
