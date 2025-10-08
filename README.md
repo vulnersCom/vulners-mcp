@@ -1,13 +1,3 @@
-APP settings
-vulners_base_url
-vulners_api_key
-
-SERVER SETTINGS
-FASTMCP_HOST: str = "127.0.0.1"
-FASTMCP_PORT: int = 8000
-FASTMCP_STREAMABLE_HTTP_PATH = "/mcp"
-
-
 # Vulners MCP Server
 
 **Vulners MCP** is a server implementation that provides the **MCP (Machine‑to‑Machine Content Provider)** interface for the Vulners API. It lets downstream clients (e.g. security scanners, SIEMs, internal tools) query vulnerability data via a streaming / RPC‑style interface while the MCP server handles the communication with Vulners’ REST API behind the scenes.
