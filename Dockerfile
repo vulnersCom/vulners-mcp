@@ -6,13 +6,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     POETRY_VERSION=2.2.0 \
     POETRY_VIRTUALENVS_CREATE=false \
-    POETRY_NO_INTERACTION=1
+    POETRY_NO_INTERACTION=1 \
+    FAST_MCP_HOST=0.0.0.0
 
-WORKDIR /srv
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates curl \
-    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
 
 RUN pip install "poetry==${POETRY_VERSION}"
 
