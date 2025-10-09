@@ -5,6 +5,7 @@ name: Publish to MCP Registry
 #    tags: ["v*"]  # Triggers on version tags like v1.0.0
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
