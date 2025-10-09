@@ -106,6 +106,4 @@ The endpoint implements MCP semantics—clients may send requests (e.g. query, i
 
 ---
 
-## License & Acknowledgements
-
-*(Add your preferred license, e.g. MIT, Apache 2.0, etc.)*
+[//]: # (mcp-name: io.github.vulnersCom/vulners-mcp)
