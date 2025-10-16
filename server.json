@@ -19,8 +19,7 @@
     },
     {
       "registryType": "oci",
-      "registryBaseUrl": "https://docker.io",
-      "identifier": "vulners/vulners-mcp",
+      "identifier": "docker.io/vulners/vulners-mcp",
       "version": "1.0.1",
       "transport": {
         "type": "stdio"
