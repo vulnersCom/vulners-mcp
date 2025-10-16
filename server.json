@@ -20,7 +20,7 @@
     {
       "registryType": "oci",
       "identifier": "docker.io/vulners/vulners-mcp:1.0.1",
-      "version": "",
+      "version": "1.0.3",
       "transport": {
         "type": "stdio"
       }
