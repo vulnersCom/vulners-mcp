@@ -16,14 +16,14 @@
       "transport": {
         "type": "stdio"
       }
-    },
-    {
-      "registryType": "oci",
-      "identifier": "docker.io/vulners/vulners-mcp:1.0.1",
-      "version": "1.0.3",
-      "transport": {
-        "type": "stdio"
-      }
     }
+//    {
+//      "registryType": "oci",
+//      "identifier": "docker.io/vulners/vulners-mcp:1.0.1",
+//      "version": "1.0.3",
+//      "transport": {
+//        "type": "stdio"
+//      }
+//    }
   ]
 }
