@@ -3,6 +3,7 @@ FROM python:3.13-slim
 
 LABEL io.modelcontextprotocol.server.name="io.github.vulnersCom/vulners-mcp"
 ENV FASTMCP_HOST=0.0.0.0
+ENV FASTMCP_PORT=80
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -27,7 +28,7 @@ COPY vulners_mcp ./vulners_mcp
 RUN useradd -u 10001 -m appuser
 USER appuser
 
-EXPOSE 8000
+EXPOSE 80
 
 # Start the FastMCP server (Streamable HTTP at /mcp/)
 CMD ["python", "-m", "vulners_mcp"]
