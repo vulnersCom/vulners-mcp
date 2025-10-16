@@ -2,6 +2,7 @@
 FROM python:3.13-slim
 
 LABEL io.modelcontextprotocol.server.name="io.github.vulnersCom/vulners-mcp"
+ENV FASTMCP_HOST=0.0.0.0
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
