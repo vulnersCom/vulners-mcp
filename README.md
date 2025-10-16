@@ -106,4 +106,4 @@ The endpoint implements MCP semantics—clients may send requests (e.g. query, i
 
 ---
 
-[//]: # (mcp-name: io.github.vulnersCom/vulners-mcp)
+mcp-name: io.github.vulnersCom/vulners-mcp

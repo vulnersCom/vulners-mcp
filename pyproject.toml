@@ -1,6 +1,6 @@
 [project]
 name = "vulners-mcp"
-version = "1.0.2"
+version = "1.0.3"
 description = "MCP interface server fronting the Vulners API (https://vulners.com)"
 readme = "README.md"
 authors = [{name = "Vulners Team", email = "dev@vulners.com"}]
