@@ -5,8 +5,10 @@ services:
     environment:
       HOST: "0.0.0.0"
     ports:
-      - "6274:6274"   # UI
-      - "6277:6277"   # proxy
+      - "6274:6274" # UI
+      - "6277:6277" # proxy
+    networks:
+      - mcp-network
   vulners-mcp:
     build: .
     image: vulners-mcp:local
@@ -16,13 +18,23 @@ services:
       MCP_HTTP_PATH: "/mcp/"
     ports:
       - "8000:8000"
+    networks:
+      - mcp-network
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          "python - <<'PY'\nimport socket,sys; s=socket.socket(); s.settimeout(1); s.connect(('localhost',8000)); s.close(); sys.exit(0)\nPY",
+          "python - <<'PY'
+
+            import socket,sys; s=socket.socket(); s.settimeout(1); s.connect(('localhost',8000)); s.close(); sys.exit(0)
+
+            PY"
         ]
       interval: 10s
       timeout: 3s
       retries: 5
     restart: unless-stopped
+
+networks:
+  mcp-network:
+    driver: bridge
