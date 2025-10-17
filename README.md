@@ -80,8 +80,8 @@ vulners‑mcp --vulners-base-url "$VULNERS_BASE_URL"   --vulners-api-key "$VULNE
 |--------------------------------|---------|---------------------|-----------------------------------------------------------------|
 | `VULNERS_BASE_URL`             | string  | https://vulners.com | Base URL for the Vulners API, override if you want to use proxy |
 | `VULNERS_API_KEY`              | string  | *required*          | API key for authenticating with Vulners                         |
-| `FASTMCP_HOST`                 | string  | `127.0.0.1`         | Host/interface on which MCP server binds                        |
-| `FASTMCP_PORT`                 | integer | `8000`              | Port for MCP server                                             |
+| `FASTMCP_HOST`                 | string  | `0.0.0.0`           | Host/interface on which MCP server binds                        |
+| `FASTMCP_PORT`                 | integer | `80`                | Port for MCP server                                             |
 | `FASTMCP_STREAMABLE_HTTP_PATH` | string  | `/mcp`              | Path for the streamable MCP endpoint                            |
 
 ---
