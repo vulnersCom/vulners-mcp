@@ -61,7 +61,10 @@ async def _get_client() -> VulnersClient:
 
 
 # -------------------- Tools (no ctx param; headers auto-forwarded) --------------------
-@mcp.tool()
+@mcp.tool(
+    name="search_lucene",
+    description="Full-text search in Vulners Knowledge Base using Lucene syntax"
+)
 async def search_lucene(
     query: str, skip: int = 0, size: int = 20, fields: Optional[List[str]] = None
 ) -> LuceneSearchResponse:
@@ -142,7 +145,10 @@ async def search_lucene(
     return result
 
 
-@mcp.tool()
+@mcp.tool(
+    name="search_by_id",
+    description="Fetch full bulletin(s) by CVE or Vulners ID"
+)
 async def search_by_id(
     id: Union[str, List[str]],
     references: Optional[bool] = None,
@@ -215,7 +221,10 @@ async def search_by_id(
     return await client.search_by_id(body, headers=_forward_headers())
 
 
-@mcp.tool()
+@mcp.tool(
+    name="audit_software",
+    description="Audit a list of software/CPEs for known vulnerabilities"
+)
 async def audit_software(body: Dict[str, Any]) -> Dict[str, Any]:
     """Audit a list of software/CPEs for known vulnerabilities.
 
@@ -253,7 +262,10 @@ async def audit_software(body: Dict[str, Any]) -> Dict[str, Any]:
     return await client.audit_software(body, headers=_forward_headers())
 
 
-@mcp.tool()
+@mcp.tool(
+    name="audit_host",
+    description="Context-aware host audit (OS + software) for known vulnerabilities"
+)
 async def audit_host(body: Dict[str, Any]) -> Dict[str, Any]:
     """Context-aware host audit (OS + software) for known vulnerabilities.
 
@@ -288,7 +300,10 @@ async def audit_host(body: Dict[str, Any]) -> Dict[str, Any]:
     return await client.audit_host(body, headers=_forward_headers())
 
 
-@mcp.tool()
+@mcp.tool(
+    name="audit_windows_kb",
+    description="Audit a Windows system by installed KBs (patches)"
+)
 async def audit_windows_kb(body: Dict[str, Any]) -> Dict[str, Any]:
     """Audit a Windows system by installed KBs (patches).
 
@@ -314,7 +329,10 @@ async def audit_windows_kb(body: Dict[str, Any]) -> Dict[str, Any]:
     return await client.audit_windows_kb(body, headers=_forward_headers())
 
 
-@mcp.tool()
+@mcp.tool(
+    name="audit_windows",
+    description="Windows audit with OS build + installed KBs + optional software list"
+)
 async def audit_windows(body: Dict[str, Any]) -> Dict[str, Any]:
     """Windows audit with OS build + installed KBs + optional software list.
 
@@ -350,7 +368,10 @@ async def audit_windows(body: Dict[str, Any]) -> Dict[str, Any]:
     return await client.audit_windows(body, headers=_forward_headers())
 
 
-@mcp.tool()
+@mcp.tool(
+    name="audit_linux_packages",
+    description="Linux package audit (RPM/DEB) for a given distro + version"
+)
 async def audit_linux_packages(
     os: str, version: str, package: List[str], include_candidates: Optional[bool] = None
 ) -> LinuxPackageAuditResponse:
@@ -391,7 +412,10 @@ async def audit_linux_packages(
     return result
 
 
-@mcp.tool()
+@mcp.tool(
+    name="get_supported_os",
+    description="List supported OS identifiers/versions for Linux package audit"
+)
 async def get_supported_os() -> Dict[str, Any]:
     """List supported OS identifiers/versions for Linux package audit.
 
@@ -411,7 +435,10 @@ async def get_supported_os() -> Dict[str, Any]:
     return await client.get_supported_os(headers=_forward_headers())
 
 
-@mcp.tool()
+@mcp.tool(
+    name="query_autocomplete",
+    description="Autocomplete helper for search inputs (vendors, products, CVEs, etc.)"
+)
 async def query_autocomplete(body: Dict[str, Any]) -> AutocompleteResponse:
     """Autocomplete helper for search inputs (vendors, products, CVEs, etc.).
 
@@ -438,7 +465,10 @@ async def query_autocomplete(body: Dict[str, Any]) -> AutocompleteResponse:
     return result
 
 
-@mcp.tool()
+@mcp.tool(
+    name="search_cpe",
+    description="Find CPE strings by vendor+product"
+)
 async def search_cpe(
     vendor: str, product: str, size: Optional[int] = None
 ) -> CpeSearchResponse:
@@ -469,7 +499,10 @@ async def search_cpe(
     return result
 
 
-@mcp.tool()
+@mcp.tool(
+    name="fetch_collection",
+    description="Fetch records from a named archive collection"
+)
 async def fetch_collection(type: str) -> Dict[str, Any]:
     """Fetch records from a named archive collection.
 
@@ -492,7 +525,10 @@ async def fetch_collection(type: str) -> Dict[str, Any]:
     return await client.fetch_collection(type, headers=_forward_headers())
 
 
-@mcp.tool()
+@mcp.tool(
+    name="fetch_collection_update",
+    description="Incremental collection sync: items updated after a given timestamp"
+)
 async def fetch_collection_update(type: str, after_iso: str) -> Dict[str, Any]:
     """Incremental collection sync: items updated after a given timestamp.
 
@@ -518,7 +554,10 @@ async def fetch_collection_update(type: str, after_iso: str) -> Dict[str, Any]:
     )
 
 
-@mcp.tool()
+@mcp.tool(
+    name="get_os_cve_archive",
+    description="Download a ZIP archive of CVE data for a specific OS + version"
+)
 async def get_os_cve_archive(os: str, version: str) -> str:
     """Download a ZIP archive of CVE data for a specific OS + version.
 
@@ -974,5 +1013,6 @@ async def health_check(request: Request) -> PlainTextResponse:
 
 # -------------------- Run built-in Streamable HTTP server --------------------
 if __name__ == "__main__":
+    from .settings import settings
     # Clients (e.g., MCP Inspector) must connect to: http://<host>:<port>/mcp/
-    mcp.run(transport="streamable-http")
+    mcp.run(transport="streamable-http", host=settings.mcp_host, port=settings.mcp_port)
