@@ -78,25 +78,10 @@ class VulnersClient:
     ) -> Any:
         return await self._post("/api/v4/audit/software", body, headers=headers)
 
-    async def audit_host(
-        self, body: Dict[str, Any], headers: Dict[str, str] | None = None
-    ) -> Any:
-        return await self._post("/api/v4/audit/host", body, headers=headers)
-
-    async def audit_windows_kb(
-        self, body: Dict[str, Any], headers: Dict[str, str] | None = None
-    ) -> Any:
-        return await self._post("/api/v3/audit/kb", body, headers=headers)
-
-    async def audit_windows(
-        self, body: Dict[str, Any], headers: Dict[str, str] | None = None
-    ) -> Any:
-        return await self._post("/api/v3/audit/winaudit", body, headers=headers)
-
     async def audit_linux_packages(
         self, body: Dict[str, Any], headers: Dict[str, str] | None = None
     ) -> Any:
-        return await self._post("/api/v3/audit/audit", body, headers=headers)
+        return await self._post("/api/v4/audit/linux", body, headers=headers)
 
     async def get_supported_os(self, headers: Dict[str, str] | None = None) -> Any:
         return await self._get("/api/v3/audit/getSupportedOS", headers=headers)
@@ -117,30 +102,3 @@ class VulnersClient:
         if size is not None:
             params["size"] = size
         return await self._get("/api/v4/search/cpe", params=params, headers=headers)
-
-    async def fetch_collection(
-        self, type_: str, headers: Dict[str, str] | None = None
-    ) -> Any:
-        return await self._get(
-            "/api/v4/archive/collection", params={"type": type_}, headers=headers
-        )
-
-    async def fetch_collection_update(
-        self, type_: str, after_iso: str, headers: Dict[str, str] | None = None
-    ) -> Any:
-        return await self._get(
-            "/api/v4/archive/collection-update",
-            params={"type": type_, "after": after_iso},
-            headers=headers,
-        )
-
-    async def get_os_cve_archive(
-        self, os: str, version: str, headers: Dict[str, str] | None = None
-    ) -> bytes:
-        data = await self._get(
-            "/api/v3/archive/distributive",
-            params={"os": os, "version": version},
-            headers=headers,
-        )
-        assert isinstance(data, (bytes, bytearray))
-        return data
