@@ -158,14 +158,14 @@ poetry run python -m vulners_mcp
 
 ## Configuration / Environment Variables
 
-| Variable                       | Type    | Default               | Description                                                     |
-|--------------------------------|---------|-----------------------|-----------------------------------------------------------------|
-| `VULNERS_API_KEY`              | string  | *required*            | API key for authenticating with Vulners                         |
-| `VULNERS_BASE_URL`             | string  | `https://vulners.com` | Base URL for the Vulners API (without /api suffix)              |
-| `MCP_TRANSPORT_MODE`           | string  | auto-detect           | Force transport mode: `http` or leave empty for auto-detect     |
-| `FASTMCP_HOST`                 | string  | `0.0.0.0`             | Host/interface on which MCP server binds (HTTP mode only)       |
-| `FASTMCP_PORT`                 | integer | `8000`                | Port for MCP server (HTTP mode only)                            |
-| `FASTMCP_STREAMABLE_HTTP_PATH` | string  | `/mcp`                | Path for the streamable MCP endpoint (HTTP mode only)           |
+| Variable                       | Type    | Default               | Description                                               |
+|--------------------------------|---------|-----------------------|-----------------------------------------------------------|
+| `VULNERS_API_KEY`              | string  | *required*            | API key for authenticating with Vulners                   |
+| `VULNERS_BASE_URL`             | string  | `https://vulners.com` | Base URL for the Vulners API (without /api suffix)        |
+| `MCP_TRANSPORT_MODE`           | string  | `stdio`               | Force transport mode: `http` or `streamable-http`         |
+| `FASTMCP_HOST`                 | string  | `0.0.0.0`             | Host/interface on which MCP server binds (HTTP mode only) |
+| `FASTMCP_PORT`                 | integer | `8000`                | Port for MCP server (HTTP mode only)                      |
+| `FASTMCP_STREAMABLE_HTTP_PATH` | string  | `/mcp`                | Path for the streamable MCP endpoint (HTTP mode only)     |
 
 **Transport Mode:**
 

@@ -1,17 +1,9 @@
-import os
 from vulners_mcp.server import mcp
+from .settings import settings
 
 
 def main():
-    # Check if HTTP mode is explicitly requested via environment variable
-    transport_mode = os.getenv("MCP_TRANSPORT_MODE", "").lower()
-    
-    if transport_mode == "http":
-        # Explicitly run HTTP server
-        mcp.run(transport="http")
-    else:
-        # Default: let FastMCP auto-detect (stdio for Claude Desktop, HTTP otherwise)
-        mcp.run()
+    mcp.run(transport=settings.mcp_transport_mode)
 
 
 if __name__ == "__main__":
