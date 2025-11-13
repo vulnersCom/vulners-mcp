@@ -1201,6 +1201,6 @@ async def health_check(request: Request) -> PlainTextResponse:
 
 @mcp.custom_route("/", methods=["GET"])
 async def root(request: Request) -> HTMLResponse:
-    with open("/srv/app/mcp.html", "r", encoding="utf-8") as file:
+    with open("./vulners_mcp/mcp.html", "r", encoding="utf-8") as file:
         html_content = file.read()
     return HTMLResponse(content=html_content)
