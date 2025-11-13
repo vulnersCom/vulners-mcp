@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <title>Vulners MCP — Connection Guide</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="description"
+        content="How to connect to the Vulners MCP server using Streamable HTTP with X-Api-Key authentication." />
+    <style>
+        /* ---------------------------------------------
+       Vulners-inspired minimal style (dark + orange)
+       Keep it clean and neutral, accent with orange.
+       --------------------------------------------- */
+        :root {
+            --bg: #0e0f13;
+            --panel: #151720;
+            --panel-alt: #1b1e2a;
+            --text: #e8eaf0;
+            --muted: #a6adbb;
+            --border: #252936;
+            --accent: #ff7a1a;
+            /* Vulners orange accent */
+            --accent-strong: #ff6a00;
+            --code-bg: #0f1117;
+            --code-bd: #2a2f45;
+            --radius: 14px;
+            --shadow: 0 6px 24px rgba(0, 0, 0, .25);
+        }
+
+        * {
+            box-sizing: border-box
+        }
+
+        html,
+        body {
+            background: var(--bg);
+            color: var(--text);
+            margin: 0;
+            font-family: ui-sans-serif, system-ui, Segoe UI, Roboto, Ubuntu, Arial, Apple Color Emoji, Segoe UI Emoji;
+        }
+
+        a {
+            color: var(--accent);
+            text-decoration: none
+        }
+
+        a:hover {
+            color: var(--accent-strong);
+            text-decoration: underline
+        }
+
+        .wrap {
+            max-width: 1060px;
+            margin: 0 auto;
+            padding: 40px 20px 80px
+        }
+
+        header {
+            border: 1px solid var(--border);
+            background: linear-gradient(180deg, var(--panel) 0%, var(--panel-alt) 100%);
+            border-radius: var(--radius);
+            padding: 28px 24px;
+            box-shadow: var(--shadow);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            backdrop-filter: blur(6px);
+        }
+
+        .brand-row {
+            display: flex;
+            align-items: center;
+            gap: 16px
+        }
+
+        .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--accent);
+            box-shadow: 0 0 24px rgba(255, 122, 26, .5)
+        }
+
+        h1 {
+            font-size: 28px;
+            margin: 0
+        }
+
+        .tag {
+            display: inline-block;
+            font-size: 12px;
+            letter-spacing: .04em;
+            text-transform: uppercase;
+            color: #111;
+            background: var(--accent);
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-weight: 700
+        }
+
+        .lead {
+            color: var(--muted);
+            margin-top: 10px;
+            line-height: 1.55
+        }
+
+        main {
+            margin-top: 26px;
+            display: grid;
+            gap: 16px
+        }
+
+        .card {
+            border: 1px solid var(--border);
+            background: linear-gradient(180deg, #12141c 0%, #0f121a 100%);
+            border-radius: var(--radius);
+            padding: 22px;
+            box-shadow: var(--shadow);
+        }
+
+        h2 {
+            font-size: 20px;
+            margin: 0 0 10px
+        }
+
+        h3 {
+            font-size: 16px;
+            margin: 14px 0 8px
+        }
+
+        .note {
+            border-left: 3px solid var(--accent);
+            background: #120f09;
+            padding: 10px 12px;
+            border-radius: 8px;
+            color: #ffd8bf
+        }
+
+        code,
+        pre {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+        }
+
+        pre {
+            background: var(--code-bg);
+            border: 1px solid var(--code-bd);
+            padding: 14px;
+            border-radius: 10px;
+            overflow: auto;
+            line-height: 1.45;
+            margin: 10px 0 0;
+            color: #d9e0ee;
+        }
+
+        .two {
+            display: grid;
+            gap: 14px
+        }
+
+        @media (min-width:880px) {
+            .two {
+                grid-template-columns: 1fr 1fr
+            }
+        }
+
+        .kbd {
+            display: inline-block;
+            border: 1px solid var(--code-bd);
+            background: var(--panel);
+            padding: 2px 6px;
+            border-radius: 6px;
+            font-size: 12px
+        }
+
+        ul {
+            margin: 8px 0 0 20px;
+            color: var(--muted)
+        }
+
+        li {
+            margin: 6px 0
+        }
+
+        footer {
+            margin-top: 22px;
+            color: var(--muted);
+            font-size: 13px
+        }
+    </style>
+</head>
+
+<body>
+    <div class="wrap">
+        <header>
+            <div class="brand-row">
+                <div class="dot" aria-hidden="true"></div>
+                <div>
+                    <div class="tag">Vulners MCP</div>
+                    <h1>Connection Guide</h1>
+                    <p class="lead">Connect your MCP client to the Vulners MCP server</p>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <section class="card">
+                <h2>Endpoint</h2>
+                <p><strong>Server URL:</strong> <code>https://mcp.vulners.com/mcp/</code></p>
+            </section>
+
+            <section class="card">
+                <h2>Transport</h2>
+                <p>Use the <strong>Streamable HTTP</strong> </p>
+            </section>
+
+            <section class="card">
+                <h2>Authentication</h2>
+                <div class="two">
+                    <div>
+                        <h3>Header</h3>
+                        <p>Send your Vulners API key via a custom header:</p>
+                        <pre><code>X-Api-Key: &lt;YOUR_API_KEY&gt;</code></pre>
+                        <h3>Get your API key</h3>
+                        <p>Follow the official steps here:<br>
+                            <a href="https://vulners.com/docs/api_reference/authentication/#how-to-obtain-api-key"
+                                target="_blank" rel="noopener">How to obtain API key →</a>
+                        </p>
+                    </div>
+                    <div>
+                        <div class="note">
+                            <strong>Keep it secret.</strong> Do not commit your API key to source control. Use
+                            environment variables or your client’s secrets storage.
+                        </div>
+                    </div>
+                </div>
+            </section>
+            <section class="card">
+                <h2>Not b0ring Market1nG information from security experts</h2>
+                <p>We have been diligently collecting and normalizing vulnerability data for many years. And we are always open to new technologies. The same Vulners but now also for LLM. Enfoy!</p>
+            </section>
+
+            <section class="card">
+                <h2>Vulners MCP for AI Agents: Ship Trustworthy Security Answers, Fast</h2>
+                <p><strong>Vulners MCP</strong> gives your agents the full vulnerability picture <strong>on
+                        demand</strong> — without teaching them the Vulners API or juggling parameters. Your get only what you needs — advisories, patches, PoCs, KEV entries, NVD records, vendor notes —
+                    keeping prompts lean and answers verifiable.</p>
+            </section>
+
+            <section class="card">
+                <h2>Time-to-Context & Minimal Wiring</h2>
+                <p>Plug MCP into your agent once. From then on, the flow is simple:</p>
+                <ul>
+                    <li><strong>Ask:</strong> “CVE-2025-XXXX” or “vendor product 3.2.1”.</li>
+                    <li><strong>Get:</strong> normalized facts (CVSS vectors, EPSS, KEV, exploit presence)
+                        <strong>and</strong> a graph of <strong>related document IDs</strong> to pull on demand.</li>
+                </ul>
+                <p>No bespoke ETL, no schema guessing — just ID-in → context &amp; document handles-out, ready for
+                    citations and follow-ups.</p>
+            </section>
+
+            <section class="card">
+                <h2>Built for Product & Corporate Teams</h2>
+                <ul>
+                    <li><strong>Product teams:</strong> In-app copilots, PR annotators, and customer-facing chat that
+                        cite vendor advisories and PoCs with links users trust — without bloating prompts.</li>
+                    <li><strong>Corporate teams:</strong> Incident triage, ticket routing, and asset impact checks that
+                        retrieve the exact docs (Patch Tuesday notes, distro advisories, KEV items) relevant to your
+                        environment.</li>
+                </ul>
+            </section>
+
+            <footer>
+                <p>@2025 Vulners Inc</p>
+            </footer>
+        </main>
+    </div>
+</body>
+
+</html>

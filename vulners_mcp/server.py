@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Union, Annotated
 from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_headers
 from starlette.requests import Request
-from starlette.responses import PlainTextResponse
+from starlette.responses import PlainTextResponse, HTMLResponse
 
 from .models import (
     AutocompleteResponse,
@@ -1197,3 +1197,10 @@ def vulners_searchin_strategies_cheatsheet_resource() -> str:
 @mcp.custom_route("/health", methods=["GET"])
 async def health_check(request: Request) -> PlainTextResponse:
     return PlainTextResponse("OK")
+
+
+@mcp.custom_route("/", methods=["GET"])
+async def root(request: Request) -> HTMLResponse:
+    with open("/srv/app/mcp.html", "r", encoding="utf-8") as file:
+        html_content = file.read()
+    return HTMLResponse(content=html_content)
