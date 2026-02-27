@@ -1,5 +1,5 @@
 include:
-  - project: 'vulners/infra/gitlab-ci'
+  - project: 'infra/gitlab-ci'
     ref: main
     file: deploy.yaml
 
