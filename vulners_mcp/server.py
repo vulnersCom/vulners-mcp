@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict, List, Optional, Union, Annotated
+from typing import Annotated, Any, Dict, List, Optional, Union
 
 from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_headers
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
+
+from vulners_mcp.metrics import MetricsMiddleware, MetricsSettings
 
 from .models import (
     AutocompleteResponse,
@@ -19,6 +21,12 @@ from .vulners_client import VulnersClient
 
 # -------------------- FastMCP server config --------------------
 mcp = FastMCP("Vulners MCP")
+
+# -------------------- Metrics middleware --------------------
+try:
+    mcp.add_middleware(MetricsMiddleware(MetricsSettings.from_env()))
+except Exception:
+    pass  # metrics backends are optional — server runs without them
 
 
 # -------------------- Per-request auth header forwarding --------------------
@@ -65,10 +73,10 @@ async def _get_client() -> VulnersClient:
 # 🚨 CRITICAL TOOL SELECTION RULES FOR MODELS 🚨
 #
 # WHEN TO USE EACH TOOL:
-# 
+#
 # bulletin_by_id: Use when you have SPECIFIC IDs
 # ✅ "Analyze CVE-2025-7775" → bulletin_by_id
-# ✅ "Look up CTX694938" → bulletin_by_id  
+# ✅ "Look up CTX694938" → bulletin_by_id
 # ✅ "Tell me about CVE-2021-44228" → bulletin_by_id
 # ✅ Any specific CVE, RHSA, MS, CTX, NCSC, THN, etc. ID
 #
@@ -83,10 +91,13 @@ async def _get_client() -> VulnersClient:
 #
 @mcp.tool(
     name="bulletin_by_id",
-    description="🚨 PRIMARY TOOL FOR KNOWN IDs 🚨 Fetch full bulletin by CVE or Vulners ID. Use this when you have a specific identifier like CVE-2024-1234, RHSA-2024:001, CTX694938, etc. Supports single ID or list of IDs. When list is provided, references are automatically set to False. NEVER use search_lucene for known IDs."
+    description="🚨 PRIMARY TOOL FOR KNOWN IDs 🚨 Fetch full bulletin by CVE or Vulners ID. Use this when you have a specific identifier like CVE-2024-1234, RHSA-2024:001, CTX694938, etc. Supports single ID or list of IDs. When list is provided, references are automatically set to False. NEVER use search_lucene for known IDs.",
 )
 async def bulletin_by_id(
-    id: Annotated[Union[str, List[str]], "Single CVE ID, Vulners ID, or bulletin ID to fetch, or a list of IDs. Supports CVE identifiers (CVE-2024-21762), vendor-specific IDs (RHSA-2024:1234), or Vulners internal IDs. When a list is provided, references are automatically set to False."],
+    id: Annotated[
+        Union[str, List[str]],
+        "Single CVE ID, Vulners ID, or bulletin ID to fetch, or a list of IDs. Supports CVE identifiers (CVE-2024-21762), vendor-specific IDs (RHSA-2024:1234), or Vulners internal IDs. When a list is provided, references are automatically set to False.",
+    ],
 ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
     """🚨 PRIMARY TOOL FOR KNOWN IDs 🚨
     Fetch full bulletin by CVE or Vulners ID.
@@ -143,7 +154,7 @@ async def bulletin_by_id(
     - Related bulletins: Connected CVEs, advisories, and security notices
 
     **🚨 TOOL SELECTION RULES FOR MODELS 🚨**
-    
+
     **WHEN TO USE THIS TOOL:**
     - ✅ User asks about specific CVE: "Analyze CVE-2025-7775"
     - ✅ User provides bulletin ID: "Look up CTX694938"
@@ -151,12 +162,12 @@ async def bulletin_by_id(
     - ✅ You have any specific identifier (CVE, RHSA, MS, CTX, etc.)
     - ✅ For multiple CVEs: Pass as a list for batch processing
     - ✅ Batch analysis: "Analyze these CVEs: CVE-2024-1234, CVE-2025-5678"
-    
+
     **WHEN NOT TO USE THIS TOOL:**
     - ❌ User asks "Find vulnerabilities in Apache" (use search_lucene)
     - ❌ User asks "Show me recent CVEs" (use search_lucene)
     - ❌ User asks "What vulnerabilities exist in Chrome?" (use search_lucene)
-    
+
     **EFFICIENCY RULES:**
     - Single IDs: Always fetches with `references=true` and all fields to provide rich context (advisories, patches, related records)
     - Multiple IDs: When a list is provided, automatically sets `references=false` for efficient batch processing
@@ -191,34 +202,29 @@ async def bulletin_by_id(
       Multiple IDs: JSON array of bulletin objects with vulnerability details.
     """
     client = await _get_client()
-    
+
     # Check if id is a list
     if isinstance(id, list):
         # For lists, references must be False
-        body = {
-            "id": id,
-            "references": False,
-            "fields": ["*"]
-        }
+        body = {"id": id, "references": False, "fields": ["*"]}
     else:
         # For single ID, use references=True and all fields
-        body = {
-            "id": id,
-            "references": True,
-            "fields": ["*"]
-        }
-    
+        body = {"id": id, "references": True, "fields": ["*"]}
+
     return await client.search_by_id(body, headers=_forward_headers())
 
 
 @mcp.tool(
     name="search_lucene",
-    description="🔍 DISCOVERY TOOL FOR UNKNOWN VULNERABILITIES 🔍 Full-text search in Vulners Knowledge Base using Lucene syntax. Use ONLY when you don't have specific IDs or version information. NEVER use for known CVE/bulletin IDs - use bulletin_by_id instead. NEVER use for specific software versions (e.g., 'Chrome 138.0.7204.184') - use audit_software instead. 🚨 CRITICAL: For vendor/product searches, ALWAYS use cnaAffected.vendor and cnaAffected.product fields - the affectedSoftware field does NOT exist."
+    description="🔍 DISCOVERY TOOL FOR UNKNOWN VULNERABILITIES 🔍 Full-text search in Vulners Knowledge Base using Lucene syntax. Use ONLY when you don't have specific IDs or version information. NEVER use for known CVE/bulletin IDs - use bulletin_by_id instead. NEVER use for specific software versions (e.g., 'Chrome 138.0.7204.184') - use audit_software instead. 🚨 CRITICAL: For vendor/product searches, ALWAYS use cnaAffected.vendor and cnaAffected.product fields - the affectedSoftware field does NOT exist.",
 )
 async def search_lucene(
-    query: Annotated[str, "Lucene query string for searching vulnerabilities. Supports Boolean operators (AND, OR, NOT), field-specific queries, range searches, and wildcard matching. NEVER use for specific software versions - use audit_software instead. For vendor/product searches use cnaAffected.vendor and cnaAffected.product (NOT affectedSoftware which does not exist)."], 
-    skip: Annotated[int, "Number of results to skip for pagination. Default is 0."] = 0, 
-    size: Annotated[int, "Maximum number of results to return. Default is 20."] = 20
+    query: Annotated[
+        str,
+        "Lucene query string for searching vulnerabilities. Supports Boolean operators (AND, OR, NOT), field-specific queries, range searches, and wildcard matching. NEVER use for specific software versions - use audit_software instead. For vendor/product searches use cnaAffected.vendor and cnaAffected.product (NOT affectedSoftware which does not exist).",
+    ],
+    skip: Annotated[int, "Number of results to skip for pagination. Default is 0."] = 0,
+    size: Annotated[int, "Maximum number of results to return. Default is 20."] = 20,
 ) -> LuceneSearchResponse:
     """🔍 DISCOVERY TOOL FOR UNKNOWN VULNERABILITIES 🔍
     Full-text search in Vulners Knowledge Base.
@@ -231,7 +237,7 @@ async def search_lucene(
       ✅ Use when user asks "Show me recent CVEs"
       ✅ Use when user asks "What vulnerabilities exist in Chrome?" (without version)
       ✅ Use when user asks "Find critical vulnerabilities from last month"
-      
+
     ❌ **DON'T USE FOR:**
       ❌ Known CVE IDs → Use bulletin_by_id instead
       ❌ CPE strings or vendor + product + version → Use audit_software instead
@@ -240,14 +246,14 @@ async def search_lucene(
     This tool provides powerful search capabilities with Boolean operators (AND, OR, NOT), field-specific queries, range searches, and wildcard matching. It includes detailed descriptions of specific vulnerabilities, their unique identifiers (CVE IDs), CVSS scores, affected software, and relevant metadata.
 
     **🚨 CRITICAL FIELD NAMES - USE THESE EXACT FIELDS 🚨**
-    
+
     **For Software/Vendor Searches, ALWAYS use:**
     - ✅ `cnaAffected.vendor` - Vendor name (e.g., "Apache Software Foundation", "Microsoft", "Google")
     - ✅ `cnaAffected.product` - Product name (e.g., "Apache Tomcat", "Windows 10", "Chrome")
     - ❌ NEVER use: `affectedSoftware` (this field does NOT exist)
     - ❌ NEVER use: `affectedSoftware.name` (this field does NOT exist)
     - ❌ NEVER use: `affectedSoftware.vendor` (this field does NOT exist)
-    
+
     **Lucene Query Syntax Examples:**
 
     Basic searches (SOFTWARE/VENDOR):
@@ -256,7 +262,7 @@ async def search_lucene(
     - Find by product: type:cve AND cnaAffected.product:*tomcat*
     - Find by product (exact): type:cve AND cnaAffected.product:"Apache Tomcat"
     - Combined vendor + product: type:cve AND cnaAffected.vendor:google AND cnaAffected.product:*chrome*
-    
+
     Basic searches (PACKAGES):
     - Package vulnerabilities: affectedPackage.packageName:libcurl*
 
@@ -287,7 +293,7 @@ async def search_lucene(
     - cnaAffected.vendor, cnaAffected.product, affectedPackage, cvelist
     - enchantments (AI scores, exploitation status)
     - And all other available fields for comprehensive vulnerability data
-    
+
     **Key Date Field:**
     - `published` - Primary field for date-based filtering and sorting (e.g., `published:[2024-01-01 TO 2024-12-31]`, `published:[now-30d TO now]`, `order:published`)
 
@@ -299,12 +305,12 @@ async def search_lucene(
     - Exploited vulnerabilities: "Show me actively exploited CVEs"
 
     **🚨 CRITICAL: Tool Selection Rules - READ FIRST 🚨**
-    
+
     **DECISION TREE FOR MODELS:**
     ```
     User Query → Tool Selection
     ├─ "Analyze CVE-2025-7775" → bulletin_by_id
-    ├─ "Look up CTX694938" → bulletin_by_id  
+    ├─ "Look up CTX694938" → bulletin_by_id
     ├─ "Tell me about CVE-2021-44228" → bulletin_by_id
     ├─ "Find vulnerabilities in Apache" → search_lucene
     ├─ "Show me recent CVEs" → search_lucene
@@ -312,27 +318,27 @@ async def search_lucene(
     ├─ "Audit Chrome 138.0.7204.184" → audit_software
     └─ "Check vulnerabilities in Firefox 120.0" → audit_software
     ```
-    
+
     **FORBIDDEN: Using search_lucene for single IDs**
     - ❌ **NEVER use search_lucene for: CVE-2024-1234, RHSA-2024:001, MS24-045, CTX694938, etc.**
     - ❌ **NEVER use search_lucene when you have a specific identifier**
     - ❌ **NEVER use search_lucene as a follow-up to bulletin_by_id**
-    
+
     **FORBIDDEN: Using search_lucene for version-specific software**
     - ❌ **NEVER use search_lucene for: "Chrome 138.0.7204.184", "Firefox 120.0", "Apache 2.4.58", etc.**
     - ❌ **NEVER use search_lucene when user specifies exact software version**
     - ❌ **ALWAYS use audit_software for version-specific software audits**
-    
+
     **REQUIRED: Use bulletin_by_id for single IDs**
     - ✅ **ALWAYS use bulletin_by_id for: CVE-2024-1234, RHSA-2024:001, MS24-045, CTX694938, etc.**
     - ✅ **ALWAYS use bulletin_by_id when you have a specific identifier**
     - ✅ **ALWAYS use bulletin_by_id for multiple known IDs**
-    
+
     **REQUIRED: Use audit_software for version-specific software**
     - ✅ **ALWAYS use audit_software for: "Chrome 138.0.7204.184", "Firefox 120.0", "Apache 2.4.58", etc.**
     - ✅ **ALWAYS use audit_software when user specifies exact software version**
     - ✅ **ALWAYS use audit_software for CPE strings or structured CPE objects**
-    
+
     **ONLY use search_lucene for:**
     - ✅ Discovery when you don't know specific IDs
     - ✅ Finding vulnerabilities by topic, product, or criteria
@@ -380,10 +386,13 @@ async def search_lucene(
 
 @mcp.tool(
     name="audit_software",
-    description="🔍 VERSION-SPECIFIC SOFTWARE AUDIT 🔍 Audit specific software versions for known vulnerabilities. Use this when you have exact software version information (e.g., Chrome 138.0.7204.184). NEVER use search_lucene for version-specific software audits."
+    description="🔍 VERSION-SPECIFIC SOFTWARE AUDIT 🔍 Audit specific software versions for known vulnerabilities. Use this when you have exact software version information (e.g., Chrome 138.0.7204.184). NEVER use search_lucene for version-specific software audits.",
 )
 async def audit_software(
-    body: Annotated[Dict[str, Any], "Request body containing software list and audit parameters. Should include 'software' array with structured CPE objects (NOT CPE strings) and optional 'match' parameter ('partial' or 'full'). Each CPE object must have fields: part, vendor, product, version, update, edition, language, platform, target_sw, target_hw, other. USE THIS for specific software versions like 'Chrome 138.0.7204.184'."]
+    body: Annotated[
+        Dict[str, Any],
+        "Request body containing software list and audit parameters. Should include 'software' array with structured CPE objects (NOT CPE strings) and optional 'match' parameter ('partial' or 'full'). Each CPE object must have fields: part, vendor, product, version, update, edition, language, platform, target_sw, target_hw, other. USE THIS for specific software versions like 'Chrome 138.0.7204.184'.",
+    ],
 ) -> Dict[str, Any]:
     """🔍 VERSION-SPECIFIC SOFTWARE AUDIT 🔍
     Audit specific software versions for known vulnerabilities.
@@ -394,7 +403,7 @@ async def audit_software(
       ✅ Use when you need precise vulnerability matching for specific software versions
       ✅ Use when user specifies exact software version (e.g., "Chrome 138.0.7204.184")
       ✅ Use when user specifies macOS or Windows - set target_sw accordingly and match="full"
-      
+
     ❌ **DON'T USE FOR:**
       ❌ Vendor + product only (no version) → Use search_lucene instead
       ❌ General vulnerability discovery → Use search_lucene instead
@@ -411,7 +420,7 @@ async def audit_software(
         "software": [ {CPE object}, ... ],
         "match": "partial" | "full"       # optional, default "partial"
       }
-      
+
     ⚠️  **CRITICAL: CPE Object Format (REQUIRED)**
       All software entries MUST use the structured CPE object format with the following fields:
       ❌ DO NOT use CPE strings like "cpe:2.3:a:google:chrome:138.0.7204.184:*:*:*:*:*:*:*"
@@ -431,7 +440,7 @@ async def audit_software(
       }
 
     Examples:
-      
+
       **General software audit:**
       {
         "software": [
@@ -464,9 +473,9 @@ async def audit_software(
         ],
         "match": "partial"
       }
-      
+
       **Example: Converting CPE string to structured object**
-      ❌ WRONG: 
+      ❌ WRONG:
       {
         "software": [
           {
@@ -481,7 +490,7 @@ async def audit_software(
           {
             "part": "a",
             "vendor": "google",
-            "product": "chrome", 
+            "product": "chrome",
             "version": "138.0.7204.184",
             "update": "*",
             "edition": "*",
@@ -494,7 +503,7 @@ async def audit_software(
         ],
         "match": "partial"
       }
-      
+
       **Windows-specific audit (use target_sw="windows" and match="full"):**
       {
         "software": [
@@ -519,14 +528,14 @@ async def audit_software(
       "vulnerabilities" array per item.
 
     **📋 FOLLOW-UP ACTIONS FOR DETAILED ANALYSIS:**
-    
+
     **When you need more detailed information about returned vulnerabilities:**
     - ✅ Extract CVE IDs from the vulnerabilities array in the response
     - ✅ Use `bulletin_by_id` with a list of CVE IDs for comprehensive details
     - ✅ Example: If audit returns CVE-2024-1234, CVE-2025-5678, call `bulletin_by_id(["CVE-2024-1234", "CVE-2025-5678"])`
     - ✅ This provides full vulnerability details, CVSS scores, references, patches, and exploitation status
     - ✅ Batch processing with `bulletin_by_id` is more efficient than multiple individual calls
-    
+
     **Workflow:**
     1. Run `audit_software` to identify vulnerable software and get CVE IDs
     2. Extract CVE IDs from the response vulnerabilities array
@@ -534,33 +543,33 @@ async def audit_software(
     4. Get comprehensive vulnerability information including patches, references, and exploitation data
     """
     client = await _get_client()
-    
+
     # Hardcode the valid fields list to ensure API compatibility
     body["fields"] = [
         "title",
-        "short_description", 
+        "short_description",
         "description",
         "type",
         "href",
         "published",
         "modified",
         "ai_score",
-        "cvelistMetrics"
+        "cvelistMetrics",
     ]
-    
+
     return await client.audit_software(body, headers=_forward_headers())
 
 
 @mcp.tool(
     name="get_supported_os",
-    description="List supported OS identifiers/versions for Linux package audit. Get available operating systems for vulnerability analysis."
+    description="List supported OS identifiers/versions for Linux package audit. Get available operating systems for vulnerability analysis.",
 )
 async def get_supported_os() -> Dict[str, Any]:
     """List supported OS identifiers/versions for Linux package audit.
-    
+
     This function takes NO parameters and returns a list of supported operating systems
     and their corresponding package query commands.
-    
+
     **IMPORTANT:** Use this function FIRST if you're unsure about package name structure
     or supported OS versions. This will help you format package names correctly for
     the audit_linux_packages tool.
@@ -583,13 +592,25 @@ async def get_supported_os() -> Dict[str, Any]:
 
 @mcp.tool(
     name="audit_linux_packages",
-    description="Linux package audit (RPM/DEB) for a given distro + version. Analyze Linux package vulnerabilities against the Vulners database."
+    description="Linux package audit (RPM/DEB) for a given distro + version. Analyze Linux package vulnerabilities against the Vulners database.",
 )
 async def audit_linux_packages(
-    os: Annotated[str, "Linux distribution identifier (e.g., ubuntu, debian, centos, rhel, fedora). Use get_supported_os() to see available options."], 
-    version: Annotated[str, "Distribution version/release (e.g., 22.04, 12, 8, 40). Must match a supported version for the specified OS."], 
-    package: Annotated[List[str], "List of package names with versions (e.g., ['openssl-3.0.2', 'curl-7.81.0-1ubuntu1.14']). Format: 'name-version' or 'name-version-release'."], 
-    include_candidates: Annotated[Optional[bool], "Whether to include potential matches in results. If None, uses default behavior (typically false)."] = None
+    os: Annotated[
+        str,
+        "Linux distribution identifier (e.g., ubuntu, debian, centos, rhel, fedora). Use get_supported_os() to see available options.",
+    ],
+    version: Annotated[
+        str,
+        "Distribution version/release (e.g., 22.04, 12, 8, 40). Must match a supported version for the specified OS.",
+    ],
+    package: Annotated[
+        List[str],
+        "List of package names with versions (e.g., ['openssl-3.0.2', 'curl-7.81.0-1ubuntu1.14']). Format: 'name-version' or 'name-version-release'.",
+    ],
+    include_candidates: Annotated[
+        Optional[bool],
+        "Whether to include potential matches in results. If None, uses default behavior (typically false).",
+    ] = None,
 ) -> LinuxPackageAuditResponse:
     """Linux package audit (RPM/DEB) for a given distro + version.
 
@@ -620,14 +641,14 @@ async def audit_linux_packages(
       and linked advisories. Use get_supported_os() to discover valid OS ids.
 
     **📋 FOLLOW-UP ACTIONS FOR DETAILED ANALYSIS:**
-    
+
     **When you need more detailed information about returned vulnerabilities:**
     - ✅ Extract CVE IDs from the vulnerabilities in the response
     - ✅ Use `bulletin_by_id` with a list of CVE IDs for comprehensive details
     - ✅ Example: If audit returns CVE-2024-1234, CVE-2025-5678, call `bulletin_by_id(["CVE-2024-1234", "CVE-2025-5678"])`
     - ✅ This provides full vulnerability details, CVSS scores, references, patches, and exploitation status
     - ✅ Batch processing with `bulletin_by_id` is more efficient than multiple individual calls
-    
+
     **Workflow:**
     1. Run `audit_linux_packages` to identify vulnerable packages and get CVE IDs
     2. Extract CVE IDs from the response vulnerabilities
@@ -635,7 +656,12 @@ async def audit_linux_packages(
     4. Get comprehensive vulnerability information including patches, references, and exploitation data
     """
     client = await _get_client()
-    body = {"os_name": os, "os_version": version, "packages": package, "cvelist_metrics": True}
+    body = {
+        "os_name": os,
+        "os_version": version,
+        "packages": package,
+        "cvelist_metrics": True,
+    }
     if include_candidates is not None:
         body["include_candidates"] = include_candidates
     result = await client.audit_linux_packages(body, headers=_forward_headers())
@@ -645,10 +671,13 @@ async def audit_linux_packages(
 
 @mcp.tool(
     name="query_autocomplete",
-    description="Autocomplete helper for search inputs (vendors, products, CVEs, etc.). Get search suggestions from the Vulners database."
+    description="Autocomplete helper for search inputs (vendors, products, CVEs, etc.). Get search suggestions from the Vulners database.",
 )
 async def query_autocomplete(
-    body: Annotated[Dict[str, Any], "Request body containing autocomplete parameters. Should include 'query' field with partial search term (e.g., 'openssl', 'CVE-2024-', 'microsoft windows')."]
+    body: Annotated[
+        Dict[str, Any],
+        "Request body containing autocomplete parameters. Should include 'query' field with partial search term (e.g., 'openssl', 'CVE-2024-', 'microsoft windows').",
+    ],
 ) -> AutocompleteResponse:
     """Autocomplete helper for search inputs (vendors, products, CVEs, etc.).
 
@@ -677,12 +706,21 @@ async def query_autocomplete(
 
 @mcp.tool(
     name="search_cpe",
-    description="Find CPE strings by vendor+product (latest schema). Search for Common Platform Enumeration identifiers in the Vulners database."
+    description="Find CPE strings by vendor+product (latest schema). Search for Common Platform Enumeration identifiers in the Vulners database.",
 )
 async def search_cpe(
-    vendor: Annotated[str, "Vendor name to search for (e.g., 'microsoft', 'google', 'apache', 'oracle'). Case-insensitive."], 
-    product: Annotated[str, "Product name to search for (e.g., 'windows_10', 'chrome', 'http_server', 'java'). Case-insensitive."], 
-    size: Annotated[Optional[int], "Maximum number of CPE results to return. If None, uses server default."] = None
+    vendor: Annotated[
+        str,
+        "Vendor name to search for (e.g., 'microsoft', 'google', 'apache', 'oracle'). Case-insensitive.",
+    ],
+    product: Annotated[
+        str,
+        "Product name to search for (e.g., 'windows_10', 'chrome', 'http_server', 'java'). Case-insensitive.",
+    ],
+    size: Annotated[
+        Optional[int],
+        "Maximum number of CPE results to return. If None, uses server default.",
+    ] = None,
 ) -> CpeSearchResponse:
     """Find CPE strings by vendor+product (latest schema).
 

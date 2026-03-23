@@ -5,7 +5,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 
-# ---- Search ----
+# -------------------- Search --------------------
 class LuceneSearchRequest(BaseModel):
     query: str
     skip: int | None = Field(default=0, ge=0)
@@ -80,7 +80,7 @@ class BulletinFull(BaseModel):
 IdSearchResponse = BulletinFull | dict[str, BulletinFull]
 
 
-# ---- Audit ----
+# -------------------- Audit --------------------
 class CpeObject(BaseModel):
     part: str | None = None
     vendor: str | None = None
@@ -145,7 +145,7 @@ class LinuxPackageAuditRequest(BaseModel):
     include_candidates: bool | None = None
 
 
-# ---- Basics / Collections ----
+# -------------------- Basics / Collections --------------------
 class AutocompleteRequest(BaseModel):
     query: str
 

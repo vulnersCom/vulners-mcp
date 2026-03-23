@@ -1,4 +1,5 @@
 from vulners_mcp.server import mcp
+
 from .settings import settings
 
 
