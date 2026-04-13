@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # --- build stage: install dependencies ---
-FROM python:3.14.3-slim-trixie AS build
+FROM python:3.14.4-slim-trixie AS build
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
@@ -22,7 +22,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
 # --- run stage: minimal image ---
-FROM python:3.14.3-slim-trixie
+FROM python:3.14.4-slim-trixie
 
 LABEL io.modelcontextprotocol.server.name="io.github.vulnersCom/vulners-mcp"
 
