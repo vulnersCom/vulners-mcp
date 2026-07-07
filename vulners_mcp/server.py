@@ -18,7 +18,9 @@ from .models import (
 from .vulners_client import VulnersClient
 
 # -------------------- FastMCP server config --------------------
-mcp = FastMCP("Vulners MCP")
+from vulners_mcp._version import __version__  # noqa: E402  (local: avoid import-block churn)
+
+mcp = FastMCP("Vulners MCP", version=__version__)
 
 
 # -------------------- Per-request auth header forwarding --------------------
