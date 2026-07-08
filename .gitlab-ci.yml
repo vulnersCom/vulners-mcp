@@ -8,9 +8,22 @@ variables:
   LATEST_IMAGE: ${CI_REGISTRY_IMAGE}:latest
 
 stages:
+  - test
   - build
   - deploy
   - sync
+
+test:
+  stage: test
+  image: python:3.14-slim
+  variables:
+    POETRY_VERSION: "2.2.0"
+  before_script:
+    - pip install "poetry==${POETRY_VERSION}"
+    - poetry install --no-ansi --with dev
+  script:
+    - poetry run ruff check .
+    - poetry run pytest -q --cov=vulners_mcp --cov-report=term-missing
 
 build:
   extends: .build-template

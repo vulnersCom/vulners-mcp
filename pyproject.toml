@@ -23,4 +23,13 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.13.2"
+pytest = "^9.1"
+pytest-asyncio = "^1.4"
+respx = "^0.23"
+pytest-cov = "^7.1"
+jsonschema = "^4.26"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
 
