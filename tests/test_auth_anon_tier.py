@@ -198,7 +198,17 @@ async def test_anon_tier_rate_limit_rejects_once_its_bucket_is_empty(
     mcp_streamable_http_client_factory, vulners_api, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(settings, "anon_api_key", "anon-dedicated-key")
-    server_module.auth_middleware.rate_limiter.tokens = 0
+    bucket = server_module.auth_middleware.rate_limiter
+    # Freeze the bucket empty: also zero the refill rate, not just the token
+    # count. TokenBucketRateLimiter.consume() refills by wall-clock elapsed
+    # time * refill_rate on every call -- spinning up the ASGI client below
+    # (lifespan entry, transport setup) takes real, if small, wall-clock
+    # time, and under a slower/coverage-instrumented CI runner that alone
+    # was enough to silently top the bucket back above 1 token before
+    # consume() ran, making this assertion flaky. Zeroing refill_rate makes
+    # the "empty and staying empty" precondition wall-clock-independent.
+    monkeypatch.setattr(bucket, "refill_rate", 0.0)
+    bucket.tokens = 0
 
     async with mcp_streamable_http_client_factory() as client:
         with pytest.raises(ToolError, match="Anonymous tier quota/rate reached"):

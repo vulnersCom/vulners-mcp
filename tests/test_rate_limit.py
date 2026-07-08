@@ -33,6 +33,12 @@ async def test_anon_rate_limiter_rejects_once_its_bucket_is_empty(
 ) -> None:
     monkeypatch.setattr(settings, "anon_api_key", "anon-dedicated-key")
     bucket = server_module.auth_middleware.rate_limiter
+    # Zero the refill rate too, not just the token count -- see the
+    # matching comment in tests/test_auth_anon_tier.py for why: consume()
+    # refills by wall-clock elapsed time * refill_rate, and the ASGI client
+    # setup below takes enough real time under a slow/coverage-instrumented
+    # CI runner to silently top the bucket back up otherwise.
+    monkeypatch.setattr(bucket, "refill_rate", 0.0)
     bucket.tokens = 0  # simulate an exhausted burst allowance
 
     async with mcp_streamable_http_client_factory() as client:
