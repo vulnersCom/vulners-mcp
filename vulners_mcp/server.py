@@ -1230,6 +1230,13 @@ async def llms_txt(request: Request) -> PlainTextResponse:
     )
 
 
+@mcp.custom_route("/auth.md", methods=["GET"])
+async def auth_md(request: Request) -> PlainTextResponse:
+    return PlainTextResponse(
+        discovery.AUTH_MD, media_type="text/markdown; charset=utf-8"
+    )
+
+
 @mcp.custom_route("/robots.txt", methods=["GET"])
 async def robots_txt(request: Request) -> PlainTextResponse:
     return PlainTextResponse(
@@ -1250,3 +1257,8 @@ async def api_catalog(request: Request) -> JSONResponse:
         discovery.build_api_catalog(),
         media_type="application/linkset+json",
     )
+
+
+@mcp.custom_route("/.well-known/agents/index.json", methods=["GET"])
+async def agents_index(request: Request) -> JSONResponse:
+    return JSONResponse(discovery.build_agents_index())

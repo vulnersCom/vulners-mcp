@@ -2,8 +2,9 @@
 """Agent-discovery documents served on the MCP subdomain (mcp.vulners.com).
 
 These give AI agents and crawlers a machine-readable description of the Vulners
-MCP server: an ``llms.txt`` guide, a ``robots.txt`` policy, an SEP-1649 MCP
-server card, and an RFC 9727 API catalog.  The content is kept here as module
+MCP server: an ``llms.txt`` guide, an ``auth.md`` authentication policy, a
+``robots.txt`` policy, an SEP-1649 MCP server card, an RFC 9727 API catalog,
+and a DNS-AID organization agent index. The content is kept here as module
 constants / builders so ``server.py`` stays small and the documents need no
 filesystem access at request time.
 """
@@ -12,32 +13,48 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-# Public URLs referenced by the discovery documents.
+from .a2a_card import A2A_PUBLIC_URL
+
+# Public URLs referenced by the discovery documents. A2A_PUBLIC_URL is
+# imported rather than redeclared here so the MCP-side documents (llms.txt,
+# the agents index) can never drift from the URL the A2A agent card itself
+# advertises (see vulners_mcp/a2a_card.py).
 MCP_ENDPOINT = "https://mcp.vulners.com/mcp"
 HEALTH_URL = "https://mcp.vulners.com/health"
 LLMS_TXT_URL = "https://mcp.vulners.com/llms.txt"
+AUTH_MD_URL = "https://mcp.vulners.com/auth.md"
+MCP_SERVER_CARD_URL = "https://mcp.vulners.com/.well-known/mcp/server-card.json"
+AGENT_CARD_URL = "https://mcp.vulners.com/.well-known/agent-card.json"
+AGENTS_INDEX_URL = "https://mcp.vulners.com/.well-known/agents/index.json"
 WEBSITE_URL = "https://vulners.com"
 REPOSITORY_URL = "https://github.com/vulnersCom/vulners-mcp"
 OPENAPI_URL = "https://vulners.com/api/openapi.json"
 API_DOCS_URL = "https://docs.vulners.com/docs/api/"
+VULNERS_USERINFO_URL = "https://vulners.com/userinfo"
+VULNERS_AUTH_MD_URL = "https://vulners.com/auth.md"
+VULNERS_LLMS_TXT_URL = "https://vulners.com/llms.txt"
 
 # Fallback protocol revision if the installed MCP SDK does not expose one.
 _FALLBACK_PROTOCOL_VERSION = "2025-06-18"
 
 
 # -------------------- llms.txt --------------------
-LLMS_TXT = """\
+# An f-string, deliberately: every URL below is interpolated from the same
+# constants ``build_server_card``/``build_agents_index``/``a2a_card`` use, so
+# this document cannot silently drift from what the server actually serves
+# (see tests/test_discovery_routes.py for the tool-name drift guard on top).
+LLMS_TXT = f"""\
 # Vulners MCP
 
 > Vulners MCP is a Model Context Protocol (MCP) server over the Vulners vulnerability API. It gives AI agents and assistants real-time CVE, advisory, exploit, and software / Linux-package audit data from the Vulners corpus, beyond the model training cutoff.
 
 ## Endpoint
 
-- MCP endpoint: https://mcp.vulners.com/mcp (Streamable HTTP transport)
+- MCP endpoint: {MCP_ENDPOINT} (Streamable HTTP transport)
 
 ## Authentication
 
-Send your Vulners API key in the `X-Api-Key` HTTP request header on every request; the server forwards the header to the Vulners API per request. Obtain a free API key at https://vulners.com/userinfo.
+This server holds no API keys of its own. A Vulners API key is required in the `X-Api-Key` HTTP request header for every tool call; the server forwards it to the Vulners API per request and never stores or issues one on your behalf. `initialize` and `tools/list` work without a key. Humans get a key by signing in at {VULNERS_USERINFO_URL} in a browser -- an agent fetching that URL directly gets an interactive challenge instead, by design. Full policy: {AUTH_MD_URL}.
 
 ## Tools
 
@@ -49,17 +66,70 @@ Send your Vulners API key in the `X-Api-Key` HTTP request header on every reques
 - query_autocomplete: Autocomplete suggestions for vendors, products, and CVEs.
 - search_cpe: Find CPE strings by vendor and product.
 
+## A2A
+
+- A2A endpoint: {A2A_PUBLIC_URL} (JSON-RPC, protocol A2A 1.0, with A2A 0.3 wire-format compatibility)
+- Agent card: {AGENT_CARD_URL}
+- Same authentication policy as MCP: `X-Api-Key` header required on every message, no anonymous option.
+
 ## Links
 
-- Vulners llms.txt: https://vulners.com/llms.txt
-- Authentication (auth.md): https://vulners.com/auth.md
-- API documentation: https://docs.vulners.com/docs/api/
-- Source code: https://github.com/vulnersCom/vulners-mcp
+- Vulners llms.txt: {VULNERS_LLMS_TXT_URL}
+- Authentication (this server): {AUTH_MD_URL}
+- Authentication (full registration walk-through): {VULNERS_AUTH_MD_URL}
+- MCP server card: {MCP_SERVER_CARD_URL}
+- Organization agent index: {AGENTS_INDEX_URL}
+- API documentation: {API_DOCS_URL}
+- Source code: {REPOSITORY_URL}
+"""
+
+
+# -------------------- auth.md --------------------
+AUTH_MD = f"""\
+# auth.md
+
+Authentication policy for the Vulners MCP server (mcp.vulners.com), written for AI agents and other automated clients.
+
+## This server holds no API keys
+
+This server never has a Vulners API key of its own to spend on your behalf, and it never issues, stores, or shares one. Every request is made with the caller's own key.
+
+## Every call needs your key
+
+- **MCP tool calls** (`tools/call`): send your personal Vulners API key in the `X-Api-Key` HTTP request header. It is forwarded to the Vulners API for that request only. A `tools/call` without the header is rejected before it ever reaches Vulners.
+- **A2A messages** (`POST /a2a`): the same `X-Api-Key` header is required on every JSON-RPC call -- there is no anonymous option (see the agent card's `securitySchemes`).
+- **Discovery is open**: `initialize` and `tools/list` work without a key, so an agent can inspect what this server offers before it has one.
+
+## Getting or rotating a key (humans only)
+
+Sign in at {VULNERS_USERINFO_URL} in a regular web browser to create, view, or rotate your API key. That page is protected by an interactive challenge -- an agent or automated client fetching it directly gets a challenge page back instead of a key, by design. A human has to complete this step.
+
+Key scopes (`api`, `scan`, `report`) and IP allowlists are also configured there.
+
+## Self-hosted / stdio mode
+
+Running this server yourself over stdio (e.g. from Claude Desktop)? Set the `VULNERS_API_KEY` environment variable to your own key. In stdio mode the server uses it for every tool call, since there is no per-request HTTP header available.
+
+## Full registration walk-through
+
+For the complete, non-agent-specific walkthrough of Vulners account creation and key management, see {VULNERS_AUTH_MD_URL}.
+
+## Machine-readable descriptors
+
+- MCP server card: {MCP_SERVER_CARD_URL}
+- A2A agent card: {AGENT_CARD_URL}
 """
 
 
 # -------------------- robots.txt --------------------
-ROBOTS_TXT = "User-agent: *\nAllow: /\n# See https://mcp.vulners.com/llms.txt\n"
+ROBOTS_TXT = (
+    "User-agent: *\n"
+    "Allow: /\n"
+    "Allow: /llms.txt\n"
+    "Allow: /auth.md\n"
+    "Allow: /.well-known/\n"
+    "# See https://mcp.vulners.com/llms.txt\n"
+)
 
 
 def _latest_protocol_version() -> str:
@@ -78,6 +148,9 @@ def build_server_card(version: str) -> Dict[str, Any]:
 
     ``version`` is read from the running FastMCP instance so the card always
     matches the ``serverInfo.version`` returned by the ``initialize`` handshake.
+    ``protocolVersion`` likewise comes from the installed SDK's own constant
+    (``_latest_protocol_version``), never a literal, so both fields track
+    reality automatically as the server and SDK are upgraded.
     """
     return {
         "serverInfo": {
@@ -101,6 +174,18 @@ def build_server_card(version: str) -> Dict[str, Any]:
             "tools": {"listChanged": True},
             "resources": {"subscribe": False, "listChanged": True},
             "prompts": {"listChanged": True},
+        },
+        # Mirrors the real policy enforced by auth.RequireApiKeyMiddleware
+        # (HTTP tools/call) and a2a_executor (A2A messages) -- this section
+        # is a description of that enforcement, not a separate promise, so
+        # it can't drift from what the server actually does.
+        "authentication": {
+            "anonymousDiscovery": True,
+            "toolInvocation": {
+                "required": True,
+                "apiKeyHeader": "X-Api-Key",
+            },
+            "authMdUrl": AUTH_MD_URL,
         },
     }
 
@@ -135,4 +220,45 @@ def build_api_catalog() -> Dict[str, Any]:
                 ],
             }
         ]
+    }
+
+
+# -------------------- DNS-AID organization agent index --------------------
+def build_agents_index() -> Dict[str, Any]:
+    """Build the ``/.well-known/agents/index.json`` organization agent index.
+
+    This is the artifact a DNS-AID ``_index._agents.vulners.com`` TXT record
+    would point at: a small, organization-level directory of every
+    agent-reachable protocol this origin exposes. Both entries are honest to
+    list because MCP and A2A ship in the same release (see the a2a-server
+    and discovery-truth MRs) -- every ``endpoint``/``card`` URL here is built
+    from the same constants the individual routes use (``MCP_ENDPOINT``,
+    ``MCP_SERVER_CARD_URL``, ``A2A_PUBLIC_URL`` from ``a2a_card.py``,
+    ``AGENT_CARD_URL``), and a dedicated test cross-checks each one against
+    the app's own route table so this can't quietly go stale (see
+    ``tests/test_discovery_routes.py``).
+    """
+    return {
+        "version": "1",
+        "organization": {
+            "name": "Vulners",
+            "domain": "vulners.com",
+            "url": WEBSITE_URL,
+        },
+        "agents": [
+            {
+                "name": "Vulners MCP",
+                "protocol": "mcp",
+                "endpoint": MCP_ENDPOINT,
+                "card": MCP_SERVER_CARD_URL,
+                "dns": "_mcp._agents.vulners.com",
+            },
+            {
+                "name": "Vulners A2A",
+                "protocol": "a2a",
+                "endpoint": A2A_PUBLIC_URL,
+                "card": AGENT_CARD_URL,
+                "dns": "_a2a._agents.vulners.com",
+            },
+        ],
     }
