@@ -22,6 +22,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
+import vulners_mcp.auth as auth_module
 import vulners_mcp.server as server_module
 from vulners_mcp.settings import Settings, settings
 from vulners_mcp.vulners_client import VulnersClient
@@ -65,9 +66,15 @@ async def test_client_forwards_caller_supplied_key_verbatim(vulners_api) -> None
 
 
 def test_forward_headers_only_forwards_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Unit-level check of ``_forward_headers`` in isolation from the HTTP stack."""
+    """Unit-level check of ``_forward_headers`` in isolation from the HTTP stack.
+
+    ``_forward_headers`` is a thin wrapper around
+    ``auth.resolve_effective_auth()`` (see ``vulners_mcp.auth``), so the
+    headers it reads from come off ``auth_module.get_http_headers``, not
+    ``server_module``'s own (now-removed) import of it.
+    """
     monkeypatch.setattr(
-        server_module,
+        auth_module,
         "get_http_headers",
         lambda include_all=True: {
             "Authorization": "Bearer super-secret-token",
@@ -82,14 +89,17 @@ def test_forward_headers_returns_none_without_a_caller_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        server_module,
+        auth_module,
         "get_http_headers",
         lambda include_all=True: {"Authorization": "Bearer super-secret-token"},
     )
-    # Hermetic regardless of whether VULNERS_API_KEY happens to be set in the
-    # ambient environment this test runs in — see test_stdio_api_key.py for
-    # the dedicated stdio-fallback behavior this would otherwise interact with.
+    # Hermetic regardless of whether VULNERS_API_KEY / VULNERS_MCP_ANON_API_KEY
+    # happen to be set in the ambient environment this test runs in — see
+    # test_stdio_api_key.py and test_auth_anon_tier.py for the dedicated
+    # fallback behaviors this would otherwise interact with.
     monkeypatch.setattr(settings, "stdio_api_key", None)
+    monkeypatch.setattr(settings, "anon_api_key", "")
+    monkeypatch.setattr(auth_module, "is_http_request", lambda: False)
     assert server_module._forward_headers() is None
 
 

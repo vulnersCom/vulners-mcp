@@ -20,9 +20,19 @@ logger = logging.getLogger(__name__)
 # stdio transport (Claude Desktop / a locally-run server), where there is no
 # per-request HTTP header to carry a caller's key. On the HTTP transport it
 # is never consulted -- see ``server._forward_headers`` and
-# ``auth.RequireApiKeyMiddleware``, both of which key off the live request
-# via ``http_context.is_http_request()``, not this setting.
+# ``auth.AuthMiddleware``, both of which key off the live request via
+# ``http_context.is_http_request()``, not this setting.
+#
+# ``VULNERS_MCP_ANON_API_KEY`` (VU-1850 "anonymous tier" MR) is the HTTP
+# transport's equivalent for a caller who sends no key at all: a DEDICATED,
+# low-privilege Vulners key configured on the hosted deployment, distinct
+# from any operator's own key. Unlike the old server-side fallback this
+# replaces, it is: (a) never the same key as a human operator's, (b) subject
+# to a size clamp and an app-level rate limit (see ``anon_max_size`` /
+# ``mcp_rate_limit_rps`` below), and (c) never substituted for a caller key
+# that Vulners itself rejected -- see ``auth.resolve_effective_auth``.
 _API_KEY_ENV_VAR = "VULNERS_API_KEY"
+_ANON_API_KEY_ENV_VAR = "VULNERS_MCP_ANON_API_KEY"
 _TRANSPORT_MODE_ENV_VAR = "MCP_TRANSPORT_MODE"
 
 
@@ -41,16 +51,38 @@ class Settings(BaseSettings):
     # balancer with no sticky routing. Env override: MCP_STATELESS_HTTP.
     mcp_stateless_http: bool = True
 
-    # Abuse-of-last-resort belt on the HTTP transport (see
-    # ``server.mcp.add_middleware(RateLimitingMiddleware(...))``).
-    # Deliberately generous and *global*, not per-caller/IP -- real per-IP
-    # throttling belongs at the Cloudflare edge in front of mcp.vulners.com.
-    # Env override: MCP_RATE_LIMIT_RPS.
+    # Anonymous-tier-only rate limit (see ``auth.AuthMiddleware``): a token
+    # bucket cap applied ONLY to calls made on the shared ``anon_api_key``
+    # (no caller-supplied ``X-Api-Key``). A caller who sends their own key is
+    # never capped at this app layer -- real per-key/per-IP throttling for
+    # keyed traffic is Vulners' and the Cloudflare edge's job, not ours.
+    # Deliberately generous and global (not per-IP): this is an
+    # abuse-of-last-resort belt protecting the shared anonymous-tier key's
+    # quota from being burned by any single caller. Reused, not renamed,
+    # from the pre-anonymous-tier "hard no-key mode" global limiter -- same
+    # env var, narrower scope. Env override: MCP_RATE_LIMIT_RPS.
     mcp_rate_limit_rps: float = 30.0
 
     # The local operator's own Vulners API key, read from VULNERS_API_KEY.
     # See the module docstring above for the stdio-only usage contract.
     stdio_api_key: str | None = Field(default=None, validation_alias=_API_KEY_ENV_VAR)
+
+    # A dedicated, low-privilege Vulners API key backing the anonymous tier
+    # on the HTTP transport: a caller who sends no ``X-Api-Key`` header still
+    # gets their ``tools/call`` forwarded upstream, on THIS key -- subject to
+    # the size clamp (``anon_max_size``) and rate limit
+    # (``mcp_rate_limit_rps``) above. Empty (the default) means this
+    # deployment offers no anonymous tier at all, and ``auth.AuthMiddleware``
+    # falls back to the old hard-gate ``NO_API_KEY_MESSAGE``. Env override:
+    # VULNERS_MCP_ANON_API_KEY.
+    anon_api_key: str = Field(default="", validation_alias=_ANON_API_KEY_ENV_VAR)
+
+    # Anonymous-tier-only argument clamp: any top-level integer ``size``
+    # tool argument is clamped down to this value before the call reaches
+    # Vulners, when the call is running on ``anon_api_key`` (see
+    # ``auth.clamp_anon_args``). Keyed calls (the caller's own X-Api-Key)
+    # are never clamped.
+    anon_max_size: int = 10
 
 
 def warn_if_api_key_env_set_outside_stdio() -> None:

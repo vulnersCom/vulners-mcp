@@ -5,14 +5,10 @@ import asyncio
 from typing import Any, Dict, List, Optional, Union, Annotated
 
 from fastmcp import FastMCP
-from fastmcp.server.dependencies import get_http_headers
-from fastmcp.server.middleware.rate_limiting import RateLimitingMiddleware
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, HTMLResponse
 
-from .auth import RequireApiKeyMiddleware
-from .http_context import is_http_request
-from .settings import settings
+from .auth import AuthMiddleware, resolve_effective_auth
 from .vulners_client import VulnersClient
 
 # -------------------- FastMCP server config --------------------
@@ -20,20 +16,14 @@ from vulners_mcp._version import __version__  # noqa: E402  (local: avoid import
 
 mcp = FastMCP("Vulners MCP", version=__version__)
 
-# Abuse-of-last-resort belt: a generous global cap on the HTTP transport. Per-
-# caller/IP limiting belongs at the Cloudflare edge in front of
-# mcp.vulners.com, not here -- see settings.mcp_rate_limit_rps docstring.
-# Kept as a module-level name (not just passed inline) so tests can inspect
-# and reset its token bucket between runs -- it lives on the shared, session-
-# wide `mcp` object, so state would otherwise leak across tests.
-rate_limiter = RateLimitingMiddleware(
-    max_requests_per_second=settings.mcp_rate_limit_rps, global_limit=True
-)
-mcp.add_middleware(rate_limiter)
-# Auth gate: added after the rate limiter (so it runs "inside" it -- a
-# request first spends a rate-limit token, then gets checked for a key) and
-# applies only to tools/call over HTTP. See vulners_mcp.auth for the policy.
-mcp.add_middleware(RequireApiKeyMiddleware())
+# Auth gate + anonymous-tier policy (key resolution, size clamp, app-level
+# rate limit) for tools/call over HTTP -- see vulners_mcp.auth for the full
+# policy. Kept as a module-level name (not just passed inline) so tests can
+# inspect and reset its rate limiter's token bucket between runs -- it lives
+# on the shared, session-wide `mcp` object, so state would otherwise leak
+# across tests.
+auth_middleware = AuthMiddleware()
+mcp.add_middleware(auth_middleware)
 
 
 # -------------------- Per-request auth header forwarding --------------------
@@ -47,30 +37,21 @@ _FORWARDABLE = {"x-api-key"}
 
 def _forward_headers() -> Dict[str, str] | None:
     """
-    Extract the forwardable auth header (X-Api-Key only) from the current MCP
-    HTTP request. Returns a dict like {"X-Api-Key": "..."}, or None if there
-    is no key to send.
+    The forwardable auth header (X-Api-Key only) for the current MCP call.
+    Returns a dict like {"X-Api-Key": "..."}, or None if there is no key to
+    send.
 
-    - HTTP transport: the caller's own ``X-Api-Key`` header, verbatim, or
-      nothing at all if they didn't send one -- this path never touches
-      ``settings.stdio_api_key`` (see ``is_http_request()``), and
-      ``RequireApiKeyMiddleware`` already rejects a keyless ``tools/call``
-      before this function is even reached, so in practice a request that
-      gets here over HTTP always has a key.
-    - stdio transport (no HTTP request in flight at all): falls back to
-      ``settings.stdio_api_key`` (``VULNERS_API_KEY`` env var), the local
-      operator's own key -- there is no per-request header in stdio mode, so
-      this is the only available source.
+    Thin wrapper around ``auth.resolve_effective_auth()`` -- the single
+    source of truth for "which key does this call use", shared with
+    ``AuthMiddleware``. In practice, by the time a tool body calls this over
+    HTTP, ``AuthMiddleware.on_call_tool`` has already run and either raised
+    (no key, no anon tier -- see ``auth.NO_API_KEY_MESSAGE``) or resolved a
+    key (the caller's own, or this deployment's anon-tier key), so this
+    never returns ``None`` on the HTTP path. Over stdio it forwards the
+    local operator's own key (``settings.stdio_api_key``), or ``None`` if
+    that isn't set either.
     """
-    raw = get_http_headers(include_all=True) or {}
-    lower = {str(k).lower(): str(v) for k, v in raw.items()}
-
-    out: Dict[str, str] = {}
-    if "x-api-key" in lower and lower["x-api-key"]:
-        out["X-Api-Key"] = lower["x-api-key"].strip()
-    elif not is_http_request() and settings.stdio_api_key:
-        out["X-Api-Key"] = settings.stdio_api_key
-    return out or None
+    return resolve_effective_auth().headers
 
 
 # -------------------- Lazy, shared Vulners HTTP client --------------------

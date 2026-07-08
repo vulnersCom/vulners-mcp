@@ -1,15 +1,20 @@
-"""Tests for the no-key auth gate (VU-1850 "auth gate" MR).
+"""Tests for the auth gate / anonymous-tier policy (VU-1850 "anonymous tier" MR).
 
-Product decision: the hosted server (mcp.vulners.com, Streamable HTTP) never
-spends a Vulners key on behalf of an anonymous caller.
+Product decision: the hosted server (mcp.vulners.com, Streamable HTTP) offers
+an anonymous tier backed by a DEDICATED, low-privilege Vulners key
+(``settings.anon_api_key``), distinct from any human operator's own key.
 
-- ``initialize`` and ``tools/list`` stay open for discovery.
-- ``tools/call`` over HTTP without an inbound ``X-Api-Key`` header fails fast
-  with a structured ``ToolError`` -- and, critically, nothing is sent
-  upstream to Vulners for that call (``vulners_api`` intercepts the upstream
-  base URL with ``assert_all_mocked=True``; if the code path under test ever
-  made an unmocked request, respx itself would raise and fail the test).
-- stdio transport (no HTTP request at all) is never gated.
+- ``initialize`` and ``tools/list`` stay open for discovery either way.
+- No caller key, anon key configured -> the call proceeds on the anon key,
+  clamped and rate-limited (see ``test_auth_anon_tier.py`` for the clamp/
+  rate-limit specifics; this module focuses on gate/pass-through wiring).
+- No caller key, anon key NOT configured -> graceful degradation to the old
+  hard-gate ``ToolError`` -- nothing is sent upstream to Vulners
+  (``vulners_api`` intercepts the upstream base URL with
+  ``assert_all_mocked=True``; an unmocked request would fail the test via
+  respx itself, not this test's own assertion).
+- stdio transport (no HTTP request at all) is never gated, regardless of the
+  anon-tier setting.
 """
 
 from __future__ import annotations
@@ -19,18 +24,15 @@ import pytest
 from fastmcp.exceptions import ToolError
 
 from vulners_mcp.auth import NO_API_KEY_MESSAGE
+from vulners_mcp.settings import settings
 
 
-async def test_tool_call_without_key_is_rejected_before_reaching_upstream(
-    mcp_streamable_http_client_factory, vulners_api
+async def test_tool_call_without_key_and_no_anon_tier_is_rejected_before_reaching_upstream(
+    mcp_streamable_http_client_factory, vulners_api, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """No X-Api-Key header -> ToolError, and no request reaches Vulners.
+    """No X-Api-Key header, no anon key configured -> ToolError, nothing sent upstream."""
+    monkeypatch.setattr(settings, "anon_api_key", "")
 
-    ``vulners_api`` has zero routes registered here on purpose: if the auth
-    gate failed to block the call and the tool proceeded to call Vulners,
-    respx (``assert_all_mocked=True``) would raise on the unmocked request
-    instead of this test's own assertion ever running.
-    """
     async with mcp_streamable_http_client_factory() as client:
         with pytest.raises(ToolError) as exc_info:
             await client.call_tool("get_supported_os", {})
@@ -39,9 +41,11 @@ async def test_tool_call_without_key_is_rejected_before_reaching_upstream(
 
 
 async def test_error_message_is_uniform_across_tools(
-    mcp_streamable_http_client_factory, vulners_api
+    mcp_streamable_http_client_factory, vulners_api, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Same guidance text regardless of which of the 7 tools was called."""
+    monkeypatch.setattr(settings, "anon_api_key", "")
+
     async with mcp_streamable_http_client_factory() as client:
         for tool_name, args in (
             ("get_supported_os", {}),
@@ -56,7 +60,8 @@ async def test_error_message_is_uniform_across_tools(
 async def test_tool_call_with_key_is_forwarded_normally(
     mcp_streamable_http_client_factory, vulners_api
 ) -> None:
-    """A caller-supplied X-Api-Key still works exactly as before the gate."""
+    """A caller-supplied X-Api-Key still works exactly as before the gate,
+    regardless of whether an anon tier is configured on this deployment."""
     route = vulners_api.get("/api/v3/audit/getSupportedOS").mock(
         return_value=httpx.Response(
             200, json={"result": "OK", "data": {"ubuntu": ["22.04", "24.04"]}}
@@ -96,7 +101,8 @@ async def test_initialize_and_tools_list_stay_open_without_a_key(
 async def test_stdio_transport_is_never_gated(mcp_client, vulners_api) -> None:
     """``mcp_client`` drives the server in-process with no HTTP request at all
     (the stdio-equivalent code path) -- a keyless tools/call must succeed,
-    not raise the HTTP-only ToolError.
+    not raise the HTTP-only ToolError, whether or not an anon tier is
+    configured.
     """
     route = vulners_api.get("/api/v3/audit/getSupportedOS").mock(
         return_value=httpx.Response(200, json={"result": "OK", "data": {"ubuntu": ["22.04"]}})

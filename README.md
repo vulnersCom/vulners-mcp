@@ -58,21 +58,46 @@ How you provide your API key depends on which transport you run:
 | Transport | Who runs it | How the key is provided |
 |---|---|---|
 | **stdio** | You, locally (Claude Desktop, a local build) | `VULNERS_API_KEY` environment variable, set once for your local server process. This is *your own* key, used only by *your* local server instance. |
-| **HTTP** (`mcp.vulners.com` or your own hosted deployment) | A shared/public server, potentially serving many callers | An `X-Api-Key` HTTP header sent on **every request**. The server holds no key of its own and never spends one on your behalf. |
+| **HTTP** (`mcp.vulners.com` or your own hosted deployment) | A shared/public server, potentially serving many callers | Either your own `X-Api-Key` HTTP header sent on **every request** (full limits, forwarded verbatim), or nothing at all -- see the anonymous tier below. |
 
-The hosted server never holds or falls back to a shared API key: `initialize` and `tools/list` work without one (so an agent can discover what the server offers before it has a key), but any `tools/call` sent without an `X-Api-Key` header fails immediately with a structured error, e.g.:
+### Anonymous tier (HTTP only)
+
+The hosted server never holds or falls back to a shared, privileged API key.
+`initialize` and `tools/list` always work without a key, so an agent can
+discover what the server offers before it has one. A `tools/call` sent
+without an `X-Api-Key` header behaves according to whether this deployment
+has an anonymous tier configured:
+
+| Caller | tools/call behavior |
+|---|---|
+| No `X-Api-Key`, anonymous tier configured | **Allowed.** Forwarded on this deployment's dedicated, low-privilege anonymous-tier key. Any `size`-style argument is clamped to a small maximum, and anonymous calls share a modest app-level rate limit. If that upstream key hits its own quota/rate limit, you get a structured error pointing you at sending your own key. |
+| No `X-Api-Key`, anonymous tier NOT configured | Fails immediately with a structured guidance error (see below) -- nothing is sent upstream. |
+| `X-Api-Key` present, but Vulners rejects it (401/403) | Sanitized error. The server **never** silently falls back to the anonymous-tier key on your behalf. |
+| `X-Api-Key` present and valid | Forwarded verbatim, full limits, no clamp, no app-level rate limit. |
+
+Example of the guidance error (no key, no anonymous tier configured):
 
 ```json
 {
   "isError": true,
   "content": [{
     "type": "text",
-    "text": "This server does not hold API keys. Send your personal Vulners API key in the X-Api-Key HTTP header. Get a key: sign in at https://vulners.com/userinfo (human, in a browser). Details: https://mcp.vulners.com/auth.md"
+    "text": "This server does not hold a privileged API key, and no anonymous tier is configured on this deployment. Send your personal Vulners API key in the X-Api-Key HTTP header. Get a key: sign in at https://vulners.com/userinfo (human, in a browser). Details: https://mcp.vulners.com/auth.md (When configured, this server's anonymous tier is itself size- and rate-limited -- your own key always gets full limits.)"
   }]
 }
 ```
 
-If you run your own HTTP-mode server (self-hosted, Docker), setting `VULNERS_API_KEY` in its environment has no effect: it is ignored (with a startup warning) outside of stdio mode. That variable only ever matters for a **stdio** server.
+Sending your own `X-Api-Key` always gets you full, uncapped (at this layer)
+access -- the anonymous tier exists so an agent can try the server out, or
+make a light, occasional call, without first obtaining a key.
+
+If you run your own HTTP-mode server (self-hosted, Docker), setting
+`VULNERS_API_KEY` in its environment has no effect: it is ignored (with a
+startup warning) outside of stdio mode -- that variable only ever matters
+for a **stdio** server. To offer the anonymous tier on your own deployment,
+set `VULNERS_MCP_ANON_API_KEY` to a **dedicated, low-privilege** Vulners key
+-- never reuse a privileged/operator key for this, since it is spent on
+behalf of anyone who calls your server without a key of their own.
 
 ---
 
@@ -199,10 +224,12 @@ poetry run python -m vulners_mcp
 | Variable                       | Type    | Default               | Description                                               |
 |--------------------------------|---------|-----------------------|-----------------------------------------------------------|
 | `VULNERS_API_KEY`              | string  | *unset*               | **stdio transport only.** The local operator's own Vulners API key (see [Authentication](#authentication)). Ignored -- with a startup warning -- outside of stdio mode; the HTTP transport never uses a server-side key. |
+| `VULNERS_MCP_ANON_API_KEY`     | string  | *unset*                | **HTTP transport only.** A DEDICATED, low-privilege Vulners API key backing the anonymous tier -- callers who send no `X-Api-Key` get forwarded on this key instead of being rejected (see [Anonymous tier](#anonymous-tier-http-only)). Unset means no anonymous tier: a keyless `tools/call` gets the guidance error. Never reuse a privileged key here. |
+| `ANON_MAX_SIZE`                | integer | `10`                  | HTTP mode, anonymous tier only. Any top-level integer `size` tool argument is clamped to this value for anonymous-tier calls. Keyed calls are never clamped. |
 | `VULNERS_BASE_URL`             | string  | `https://vulners.com` | Base URL for the Vulners API (without /api suffix)        |
 | `MCP_TRANSPORT_MODE`           | string  | `stdio`               | Force transport mode: `http` or `streamable-http`         |
 | `MCP_STATELESS_HTTP`           | boolean | `true`                | HTTP mode only. Each request gets its own transport with no server-side `mcp-session-id` continuity, so the server can scale horizontally behind a load balancer with no sticky routing. |
-| `MCP_RATE_LIMIT_RPS`           | number  | `30`                  | HTTP mode only. Generous global (not per-caller) requests-per-second ceiling -- an abuse-of-last-resort belt. Real per-IP throttling belongs at the edge (e.g. Cloudflare) in front of a hosted deployment. |
+| `MCP_RATE_LIMIT_RPS`           | number  | `30`                  | HTTP mode, anonymous tier only. Generous global (not per-caller) requests-per-second ceiling protecting the shared anonymous-tier key's quota -- an abuse-of-last-resort belt. Keyed calls are never capped here; real per-IP throttling belongs at the edge (e.g. Cloudflare) in front of a hosted deployment. |
 | `FASTMCP_HOST`                 | string  | `0.0.0.0`             | Host/interface on which MCP server binds (HTTP mode only) |
 | `FASTMCP_PORT`                 | integer | `8000`                | Port for MCP server (HTTP mode only)                      |
 | `FASTMCP_STREAMABLE_HTTP_PATH` | string  | `/mcp`                | Path for the streamable MCP endpoint (HTTP mode only)     |
@@ -235,10 +262,12 @@ http://<FASTMCP_HOST>:<FASTMCP_PORT>/mcp
 
 Default: `http://0.0.0.0:8000/mcp`
 
-Send your Vulners API key as an `X-Api-Key` header on every request (see
-[Authentication](#authentication)); `initialize` and `tools/list` work
-without one, but a keyless `tools/call` is rejected immediately with a
-structured error instead of being forwarded upstream.
+Send your Vulners API key as an `X-Api-Key` header on every request for full,
+uncapped limits (see [Authentication](#authentication)). `initialize` and
+`tools/list` always work without one; a keyless `tools/call` either runs on
+this deployment's anonymous tier (if configured -- reduced limits) or is
+rejected immediately with a structured guidance error instead of being
+forwarded upstream (if not).
 
 The server is stateless (`MCP_STATELESS_HTTP=true` by default): every
 request is handled independently, with no server-side session continuity

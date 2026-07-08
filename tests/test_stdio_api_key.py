@@ -20,6 +20,7 @@ import logging
 import httpx
 import pytest
 
+import vulners_mcp.auth as auth_module
 import vulners_mcp.server as server_module
 from vulners_mcp.settings import Settings, settings
 
@@ -41,9 +42,15 @@ def test_stdio_api_key_defaults_to_none(monkeypatch: pytest.MonkeyPatch) -> None
 def test_forward_headers_uses_stdio_key_only_when_not_an_http_request(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Stdio-equivalent: no active HTTP request -> falls back to the env key."""
-    monkeypatch.setattr(server_module, "get_http_headers", lambda include_all=True: {})
-    monkeypatch.setattr(server_module, "is_http_request", lambda: False)
+    """Stdio-equivalent: no active HTTP request -> falls back to the env key.
+
+    ``_forward_headers`` is a thin wrapper around
+    ``auth.resolve_effective_auth()`` -- patch the underlying signals there,
+    not on ``server_module`` (which no longer imports them; see
+    ``vulners_mcp.auth``).
+    """
+    monkeypatch.setattr(auth_module, "get_http_headers", lambda include_all=True: {})
+    monkeypatch.setattr(auth_module, "is_http_request", lambda: False)
     monkeypatch.setattr(settings, "stdio_api_key", "owner-key")
 
     assert server_module._forward_headers() == {"X-Api-Key": "owner-key"}
@@ -53,11 +60,13 @@ def test_forward_headers_never_uses_stdio_key_on_the_http_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """HTTP path: even if the env key is set (operator misconfiguration), a
-    request with no caller-supplied header must forward nothing at all.
+    request with no caller-supplied header and no anon tier configured must
+    forward nothing at all.
     """
-    monkeypatch.setattr(server_module, "get_http_headers", lambda include_all=True: {})
-    monkeypatch.setattr(server_module, "is_http_request", lambda: True)
+    monkeypatch.setattr(auth_module, "get_http_headers", lambda include_all=True: {})
+    monkeypatch.setattr(auth_module, "is_http_request", lambda: True)
     monkeypatch.setattr(settings, "stdio_api_key", "owner-key")
+    monkeypatch.setattr(settings, "anon_api_key", "")
 
     assert server_module._forward_headers() is None
 
@@ -70,11 +79,11 @@ def test_forward_headers_prefers_caller_header_over_stdio_key(
     caller-supplied key always wins over the env fallback.
     """
     monkeypatch.setattr(
-        server_module,
+        auth_module,
         "get_http_headers",
         lambda include_all=True: {"X-Api-Key": "caller-key"},
     )
-    monkeypatch.setattr(server_module, "is_http_request", lambda: False)
+    monkeypatch.setattr(auth_module, "is_http_request", lambda: False)
     monkeypatch.setattr(settings, "stdio_api_key", "owner-key")
 
     assert server_module._forward_headers() == {"X-Api-Key": "caller-key"}
@@ -101,14 +110,16 @@ async def test_http_mode_end_to_end_ignores_owner_key_from_env(
     monkeypatch: pytest.MonkeyPatch, mcp_streamable_http_client_factory, vulners_api
 ) -> None:
     """Full HTTP round trip with the env key set (simulated deployment
-    misconfiguration) and no caller header: the auth gate must still reject
-    the call, and Vulners must never see the owner's key.
+    misconfiguration), no anon tier configured, and no caller header: the
+    auth gate must still reject the call, and Vulners must never see the
+    owner's key.
     """
     from fastmcp.exceptions import ToolError
 
     from vulners_mcp.auth import NO_API_KEY_MESSAGE
 
     monkeypatch.setattr(settings, "stdio_api_key", "owner-key")
+    monkeypatch.setattr(settings, "anon_api_key", "")
 
     async with mcp_streamable_http_client_factory() as client:
         with pytest.raises(ToolError) as exc_info:

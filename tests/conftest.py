@@ -32,16 +32,17 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 @pytest.fixture(autouse=True)
 def _reset_rate_limiter_bucket() -> None:
-    """Refill the global rate limiter's token bucket before every test.
+    """Refill the anon-tier rate limiter's token bucket before every test.
 
-    ``server_module.rate_limiter`` is attached once to the module-level,
-    session-wide ``mcp`` object (see ``server.py``), so without this its
-    token bucket would accumulate consumption across the whole test session
-    and could spuriously trip "Global rate limit exceeded" in a test that
-    has nothing to do with rate limiting. A dedicated behavioral test for
-    the limiter itself lives in ``tests/test_rate_limit.py``.
+    ``server_module.auth_middleware`` (and its ``rate_limiter``) is attached
+    once to the module-level, session-wide ``mcp`` object (see
+    ``server.py``), so without this its token bucket would accumulate
+    consumption across the whole test session and could spuriously trip the
+    anon-tier limit in a test that has nothing to do with rate limiting. A
+    dedicated behavioral test for the limiter itself lives in
+    ``tests/test_rate_limit.py``.
     """
-    bucket = server_module.rate_limiter.global_limiter
+    bucket = server_module.auth_middleware.rate_limiter
     bucket.tokens = bucket.capacity
     bucket.last_refill = time.time()
 

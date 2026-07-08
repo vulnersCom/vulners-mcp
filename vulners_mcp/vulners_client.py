@@ -9,6 +9,7 @@ from typing import Any, Dict
 
 import httpx
 
+from .auth import ANON_TIER_LIMIT_MESSAGE
 from .logging_utils import key_fingerprint, log_upstream_call
 from .settings import settings
 
@@ -33,19 +34,31 @@ _MAX_BACKOFF_SECONDS = 8.0
 _RETRIABLE_TRANSPORT_ERRORS = (httpx.ConnectError, httpx.ConnectTimeout)
 
 
-def _sanitize_message(status: int) -> str:
+def _sanitize_message(status: int, *, is_anon: bool = False) -> str:
     """Map an upstream HTTP status to a short, safe-to-surface error message.
 
     Never includes the raw upstream response body — that is only ever logged
     at DEBUG level (see call sites in :class:`VulnersClient`).
+
+    ``is_anon`` distinguishes a 429 that landed on the shared anonymous-tier
+    key (``settings.anon_api_key``) from one that landed on a caller's own
+    key: the former gets pointed at sending a personal key for full limits,
+    the latter gets the generic "slow down" message.
     """
     if status in (401, 403):
         return "API key missing or rejected — see https://mcp.vulners.com/auth.md"
     if status == 429:
+        if is_anon:
+            return ANON_TIER_LIMIT_MESSAGE
         return "Vulners API rate limit or quota exceeded — slow down and retry later"
     if status >= 500:
         return "Vulners API is temporarily unavailable — please retry later"
     return f"Vulners API rejected the request (HTTP {status})"
+
+
+def _is_anon_key(key: str | None) -> bool:
+    """True if ``key`` is exactly this deployment's configured anon-tier key."""
+    return bool(key) and bool(settings.anon_api_key) and key == settings.anon_api_key
 
 
 class ApiError(RuntimeError):
@@ -109,8 +122,14 @@ class VulnersClient:
         assert self._client, "client not started"
         merged_headers = self._merge(headers)
         request_id = uuid.uuid4().hex
-        auth_mode = "keyed" if "X-Api-Key" in merged_headers else "anonymous"
-        key_fp = key_fingerprint(merged_headers.get("X-Api-Key"))
+        sent_key = merged_headers.get("X-Api-Key")
+        if not sent_key:
+            auth_mode = "anonymous"
+        elif _is_anon_key(sent_key):
+            auth_mode = "anon-tier"
+        else:
+            auth_mode = "keyed"
+        key_fp = key_fingerprint(sent_key)
 
         last_exc: Exception | None = None
         for attempt in range(1, _MAX_ATTEMPTS + 1):
@@ -209,9 +228,10 @@ class VulnersClient:
             response.request.url,
             response.text,
         )
+        sent_key = response.request.headers.get("x-api-key")
         return ApiError(
             response.status_code,
-            _sanitize_message(response.status_code),
+            _sanitize_message(response.status_code, is_anon=_is_anon_key(sent_key)),
             upstream_body=response.text,
         )
 
