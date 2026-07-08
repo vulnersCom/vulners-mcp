@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from .a2a_card import A2A_PUBLIC_URL
+from .settings import settings
 
 # Public URLs referenced by the discovery documents. A2A_PUBLIC_URL is
 # imported rather than redeclared here so the MCP-side documents (llms.txt,
@@ -54,7 +55,7 @@ LLMS_TXT = f"""\
 
 ## Authentication
 
-This server holds no API keys of its own. A Vulners API key is required in the `X-Api-Key` HTTP request header for every tool call; the server forwards it to the Vulners API per request and never stores or issues one on your behalf. `initialize` and `tools/list` work without a key. Humans get a key by signing in at {VULNERS_USERINFO_URL} in a browser -- an agent fetching that URL directly gets an interactive challenge instead, by design. Full policy: {AUTH_MD_URL}.
+This server holds no privileged API key of its own. Send your personal Vulners API key in the `X-Api-Key` HTTP request header for full, uncapped limits; the server forwards it to the Vulners API per request and never stores or issues one on your behalf. Omit the header entirely and the call still goes through, on this deployment's own dedicated, low-privilege anonymous-tier key (when configured) -- reduced limits: result-size arguments clamped to {settings.anon_max_size}, plus a shared, modest rate limit. `initialize` and `tools/list` always work without a key either way. Humans get a key by signing in at {VULNERS_USERINFO_URL} in a browser -- an agent fetching that URL directly gets an interactive challenge instead, by design. Full policy: {AUTH_MD_URL}.
 
 ## Tools
 
@@ -70,7 +71,7 @@ This server holds no API keys of its own. A Vulners API key is required in the `
 
 - A2A endpoint: {A2A_PUBLIC_URL} (JSON-RPC, protocol A2A 1.0, with A2A 0.3 wire-format compatibility)
 - Agent card: {AGENT_CARD_URL}
-- Same authentication policy as MCP: `X-Api-Key` header required on every message, no anonymous option.
+- Same authentication policy as MCP: send `X-Api-Key` for full limits, or omit it for the anonymous tier (reduced limits, when configured on this deployment).
 
 ## Links
 
@@ -90,15 +91,15 @@ AUTH_MD = f"""\
 
 Authentication policy for the Vulners MCP server (mcp.vulners.com), written for AI agents and other automated clients.
 
-## This server holds no API keys
+## This server holds no privileged API key of its own
 
-This server never has a Vulners API key of its own to spend on your behalf, and it never issues, stores, or shares one. Every request is made with the caller's own key.
+This server never has a privileged Vulners API key of its own to spend on your behalf, and it never issues, stores, or shares your key. A caller-supplied key that Vulners itself rejects (expired, revoked, wrong scope) is never silently retried on any other key -- you get a sanitized error back, not a masked failure.
 
-## Every call needs your key
+## Two ways to call it
 
-- **MCP tool calls** (`tools/call`): send your personal Vulners API key in the `X-Api-Key` HTTP request header. It is forwarded to the Vulners API for that request only. A `tools/call` without the header is rejected before it ever reaches Vulners.
-- **A2A messages** (`POST /a2a`): the same `X-Api-Key` header is required on every JSON-RPC call -- there is no anonymous option (see the agent card's `securitySchemes`).
-- **Discovery is open**: `initialize` and `tools/list` work without a key, so an agent can inspect what this server offers before it has one.
+- **Bring your own key (full limits).** Send your personal Vulners API key in the `X-Api-Key` HTTP request header -- for both MCP tool calls (`tools/call`) and A2A messages (`POST /a2a`). It is forwarded to the Vulners API for that request only: full limits, no result-size clamp, no app-level rate limit.
+- **Anonymous tier (reduced limits).** Omit the `X-Api-Key` header entirely and the call still goes through, on this deployment's own dedicated, low-privilege key -- when one is configured. Result-size arguments are clamped to {settings.anon_max_size}, and anonymous calls share a modest, app-level rate limit protecting that shared key's quota. If the anonymous-tier key's own quota or rate limit is exhausted upstream, you get a structured error telling you to send your own key for full limits. If this deployment has no anonymous tier configured at all, a keyless call fails immediately with a guidance error instead of being forwarded.
+- **Discovery is always open**: `initialize` and `tools/list` (MCP), and the agent card (A2A), work without a key either way, so an agent can inspect what this server offers before deciding whether it needs its own key.
 
 ## Getting or rotating a key (humans only)
 
@@ -108,7 +109,7 @@ Key scopes (`api`, `scan`, `report`) and IP allowlists are also configured there
 
 ## Self-hosted / stdio mode
 
-Running this server yourself over stdio (e.g. from Claude Desktop)? Set the `VULNERS_API_KEY` environment variable to your own key. In stdio mode the server uses it for every tool call, since there is no per-request HTTP header available.
+Running this server yourself over stdio (e.g. from Claude Desktop)? Set the `VULNERS_API_KEY` environment variable to your own key. In stdio mode the server uses it for every tool call, since there is no per-request HTTP header available -- the anonymous tier is an HTTP-transport concept only and does not apply here.
 
 ## Full registration walk-through
 
@@ -175,15 +176,27 @@ def build_server_card(version: str) -> Dict[str, Any]:
             "resources": {"subscribe": False, "listChanged": True},
             "prompts": {"listChanged": True},
         },
-        # Mirrors the real policy enforced by auth.RequireApiKeyMiddleware
-        # (HTTP tools/call) and a2a_executor (A2A messages) -- this section
-        # is a description of that enforcement, not a separate promise, so
-        # it can't drift from what the server actually does.
+        # Mirrors the real policy enforced by auth.AuthMiddleware (HTTP
+        # tools/call) and a2a_executor (A2A messages) -- this section is a
+        # description of that enforcement, not a separate promise, so it
+        # can't drift from what the server actually does. maxResultSize is
+        # read live from settings.anon_max_size, not a literal.
         "authentication": {
             "anonymousDiscovery": True,
             "toolInvocation": {
-                "required": True,
+                "required": False,
+                "anonymousTier": {
+                    "allowed": True,
+                    "maxResultSize": settings.anon_max_size,
+                    "rateLimited": True,
+                    "note": (
+                        "Anonymous tier requires this deployment to have a "
+                        "dedicated anon-tier key configured; if not, a "
+                        "keyless call fails with a guidance error instead."
+                    ),
+                },
                 "apiKeyHeader": "X-Api-Key",
+                "apiKeyBenefit": "full limits: no result-size clamp, no app-level rate limit",
             },
             "authMdUrl": AUTH_MD_URL,
         },

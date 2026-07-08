@@ -60,11 +60,19 @@ def test_llms_txt_authentication_is_honest(client: TestClient) -> None:
     not hand out keys, humans get their own at vulners.com, and the policy
     is spelled out in full at /auth.md."""
     body = client.get("/llms.txt").text
-    assert "This server holds no API keys of its own" in body
+    assert "This server holds no privileged API key of its own" in body
     assert "https://vulners.com/userinfo" in body
     assert "https://mcp.vulners.com/auth.md" in body
     # The old, misleading phrasing must be gone.
     assert "Obtain a free API key" not in body
+
+
+def test_llms_txt_describes_the_anonymous_tier(client: TestClient) -> None:
+    """VU-1850 anonymous tier: llms.txt must say a keyless call can still
+    go through (reduced limits), not just describe the hard no-key gate."""
+    body = client.get("/llms.txt").text
+    assert "anonymous-tier" in body or "anonymous tier" in body
+    assert str(settings.anon_max_size) in body
 
 
 def test_llms_txt_has_a2a_section(client: TestClient) -> None:
@@ -73,6 +81,11 @@ def test_llms_txt_has_a2a_section(client: TestClient) -> None:
     assert "## A2A" in body
     assert "https://mcp.vulners.com/a2a" in body
     assert "https://mcp.vulners.com/.well-known/agent-card.json" in body
+    # A2A shares the same anonymous-tier policy as MCP now -- the old "no
+    # anonymous option" hard-gate phrasing must be gone.
+    a2a_section = body.split("## A2A", 1)[1].split("## Links", 1)[0]
+    assert "no anonymous option" not in a2a_section
+    assert "anonymous tier" in a2a_section
 
 
 async def test_llms_txt_tool_names_match_registered_tools(client: TestClient) -> None:
@@ -96,7 +109,7 @@ def test_auth_md(client: TestClient) -> None:
     assert resp.headers["content-type"].startswith("text/markdown")
     body = resp.text
     assert body.startswith("# auth.md")
-    assert "holds no API keys" in body
+    assert "holds no privileged API key" in body
     assert "X-Api-Key" in body
     assert "https://vulners.com/userinfo" in body
     assert "interactive challenge" in body
@@ -104,6 +117,18 @@ def test_auth_md(client: TestClient) -> None:
     assert "https://vulners.com/auth.md" in body
     assert "https://mcp.vulners.com/.well-known/mcp/server-card.json" in body
     assert "https://mcp.vulners.com/.well-known/agent-card.json" in body
+
+
+def test_auth_md_describes_the_anonymous_tier(client: TestClient) -> None:
+    """VU-1850 anonymous tier: auth.md must document both the bring-your-
+    own-key path (full limits) and the anonymous fallback (reduced limits,
+    when configured) -- not just the old hard no-key gate."""
+    body = client.get("/auth.md").text
+    assert "anonymous tier" in body.lower()
+    assert str(settings.anon_max_size) in body
+    assert "rate limit" in body.lower()
+    # Never silently masks a bad caller key with the anon key.
+    assert "never silently retried" in body
 
 
 def test_robots_txt(client: TestClient) -> None:
@@ -136,10 +161,20 @@ def test_server_card(client: TestClient) -> None:
 
 
 def test_server_card_authentication_block(client: TestClient) -> None:
+    """VU-1850 anonymous tier: tool invocation is no longer an unconditional
+    hard requirement -- a keyless call may run on this deployment's
+    anonymous-tier key, with a documented, live-settings-driven size clamp.
+    """
     data = client.get("/.well-known/mcp/server-card.json").json()
     auth = data["authentication"]
     assert auth["anonymousDiscovery"] is True
-    assert auth["toolInvocation"] == {"required": True, "apiKeyHeader": "X-Api-Key"}
+    tool_invocation = auth["toolInvocation"]
+    assert tool_invocation["required"] is False
+    assert tool_invocation["apiKeyHeader"] == "X-Api-Key"
+    anon_tier = tool_invocation["anonymousTier"]
+    assert anon_tier["allowed"] is True
+    assert anon_tier["maxResultSize"] == settings.anon_max_size
+    assert anon_tier["rateLimited"] is True
     assert auth["authMdUrl"] == "https://mcp.vulners.com/auth.md"
 
 
