@@ -5,15 +5,19 @@ Covers two related changes:
 1. ``VulnersClient`` never injects a server-side fallback API key any more —
    ``settings.vulners_api_key`` doesn't exist, and a caller who sends no key
    gets a request upstream with no ``X-Api-Key`` header at all (Vulners
-   rejects it itself; a friendlier MCP-layer gate ships in a later MR).
+   rejects it itself; the friendlier MCP-layer gate that replaced that raw
+   rejection lives in ``vulners_mcp.auth`` / ``tests/test_auth_gate.py``,
+   added in the follow-up VU-1850 "auth gate" MR).
 2. ``server._forward_headers()`` forwards only ``X-Api-Key`` upstream —
    ``Authorization`` is never forwarded, so a bearer token meant for the MCP
    host itself can't leak to Vulners.
+
+The stdio-only env-key fallback that ``_forward_headers()`` also implements
+is covered separately in ``tests/test_stdio_api_key.py``, along with the
+``VULNERS_API_KEY``-outside-stdio startup warning.
 """
 
 from __future__ import annotations
-
-import logging
 
 import httpx
 import pytest
@@ -82,6 +86,10 @@ def test_forward_headers_returns_none_without_a_caller_key(
         "get_http_headers",
         lambda include_all=True: {"Authorization": "Bearer super-secret-token"},
     )
+    # Hermetic regardless of whether VULNERS_API_KEY happens to be set in the
+    # ambient environment this test runs in — see test_stdio_api_key.py for
+    # the dedicated stdio-fallback behavior this would otherwise interact with.
+    monkeypatch.setattr(settings, "stdio_api_key", None)
     assert server_module._forward_headers() is None
 
 
@@ -106,31 +114,3 @@ async def test_authorization_header_is_not_forwarded_upstream_end_to_end(
     upstream_headers = route.calls[0].request.headers
     assert upstream_headers["x-api-key"] == "caller-key"
     assert "authorization" not in upstream_headers
-
-
-def test_warns_when_legacy_api_key_env_var_is_set(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    monkeypatch.setenv("VULNERS_API_KEY", "some-legacy-key")
-    from vulners_mcp.settings import warn_if_legacy_api_key_env_set
-
-    with caplog.at_level(logging.WARNING, logger="vulners_mcp.settings"):
-        warn_if_legacy_api_key_env_set()
-
-    assert any(
-        "VULNERS_API_KEY" in record.message and "ignored" in record.message
-        for record in caplog.records
-    )
-    assert "some-legacy-key" not in caplog.text
-
-
-def test_no_warning_when_legacy_api_key_env_var_is_absent(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    monkeypatch.delenv("VULNERS_API_KEY", raising=False)
-    from vulners_mcp.settings import warn_if_legacy_api_key_env_set
-
-    with caplog.at_level(logging.WARNING, logger="vulners_mcp.settings"):
-        warn_if_legacy_api_key_env_set()
-
-    assert caplog.records == []

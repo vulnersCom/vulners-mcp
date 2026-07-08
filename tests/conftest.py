@@ -11,6 +11,7 @@ each other.
 from __future__ import annotations
 
 import json
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator, Callable, Iterator
@@ -27,6 +28,22 @@ from vulners_mcp.server import mcp
 from vulners_mcp.settings import settings
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter_bucket() -> None:
+    """Refill the global rate limiter's token bucket before every test.
+
+    ``server_module.rate_limiter`` is attached once to the module-level,
+    session-wide ``mcp`` object (see ``server.py``), so without this its
+    token bucket would accumulate consumption across the whole test session
+    and could spuriously trip "Global rate limit exceeded" in a test that
+    has nothing to do with rate limiting. A dedicated behavioral test for
+    the limiter itself lives in ``tests/test_rate_limit.py``.
+    """
+    bucket = server_module.rate_limiter.global_limiter
+    bucket.tokens = bucket.capacity
+    bucket.last_refill = time.time()
 
 
 @pytest.fixture(autouse=True)

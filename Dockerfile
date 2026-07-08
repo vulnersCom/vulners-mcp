@@ -29,5 +29,7 @@ USER appuser
 
 EXPOSE 8000
 
-# Start the FastMCP server (Streamable HTTP at /mcp/)
+# Transport is chosen at runtime by MCP_TRANSPORT_MODE (default: stdio).
+# In HTTP mode this boots uvicorn against the composed ASGI app
+# (vulners_mcp.asgi:app, Streamable HTTP at /mcp) -- see vulners_mcp/__init__.py.
 CMD ["python", "-m", "vulners_mcp"]
