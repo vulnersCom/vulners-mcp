@@ -59,14 +59,16 @@ async def test_tools_call_uses_mocked_upstream_not_the_network(
     """`tools/call` must go through httpx -> respx, never a real socket.
 
     Mocks the Vulners `/api/v3/search/id` endpoint that `bulletin_by_id`
-    calls and asserts the tool returns exactly the mocked payload. This
-    proves the respx fixture is correctly wired into the client used by the
-    running server.
+    calls and asserts the tool returns exactly the mocked payload, unwrapped
+    from the real Vulners `{"result": "OK", "data": ...}` envelope. This
+    proves both that the respx fixture is correctly wired into the client
+    used by the running server, and that `VulnersClient` unwraps `data`
+    rather than handing back the raw envelope.
     """
     payload = load_fixture("bulletin_by_id_response.json")
     jsonschema.validate(payload, BULLETIN_SCHEMA)
     route = vulners_api.post("/api/v3/search/id").mock(
-        return_value=httpx.Response(200, json=payload)
+        return_value=httpx.Response(200, json={"result": "OK", "data": payload})
     )
 
     result = await mcp_client.call_tool("bulletin_by_id", {"id": "CVE-2024-0001"})

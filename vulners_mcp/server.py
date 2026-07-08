@@ -9,12 +9,6 @@ from fastmcp.server.dependencies import get_http_headers
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, HTMLResponse
 
-from .models import (
-    AutocompleteResponse,
-    CpeSearchResponse,
-    LinuxPackageAuditResponse,
-    LuceneSearchResponse,
-)
 from .vulners_client import VulnersClient
 
 # -------------------- FastMCP server config --------------------
@@ -24,15 +18,21 @@ mcp = FastMCP("Vulners MCP", version=__version__)
 
 
 # -------------------- Per-request auth header forwarding --------------------
-# Only forward auth-related headers; avoid hop-by-hop headers, etc.
-_FORWARDABLE = {"x-api-key", "authorization"}
+# Only X-Api-Key is forwarded upstream. Authorization is deliberately NOT
+# forwarded: it may carry a bearer token scoped to *this* MCP server (e.g. an
+# OAuth session with the MCP host) that has nothing to do with Vulners, and
+# leaking it to a third-party upstream would be a token-leak bug. Vulners
+# auth is X-Api-Key only.
+_FORWARDABLE = {"x-api-key"}
 
 
 def _forward_headers() -> Dict[str, str] | None:
     """
-    Extract forwardable auth headers from the current MCP HTTP request.
-    Returns a dict like {"X-Api-Key": "..."} or {"Authorization": "Bearer ..."}.
-    If no relevant header is present, returns None (the VulnersClient will fall back to env key).
+    Extract the forwardable auth header (X-Api-Key only) from the current MCP
+    HTTP request. Returns a dict like {"X-Api-Key": "..."}, or None if the
+    caller didn't send one. VulnersClient never injects a fallback key, so a
+    request without a caller key goes upstream with no X-Api-Key header at
+    all — Vulners will reject it itself.
     """
     raw = get_http_headers(include_all=True) or {}
     lower = {str(k).lower(): str(v) for k, v in raw.items()}
@@ -40,8 +40,6 @@ def _forward_headers() -> Dict[str, str] | None:
     out: Dict[str, str] = {}
     if "x-api-key" in lower and lower["x-api-key"]:
         out["X-Api-Key"] = lower["x-api-key"].strip()
-    if "authorization" in lower and lower["authorization"]:
-        out["Authorization"] = lower["authorization"].strip()
     return out or None
 
 
@@ -56,7 +54,7 @@ async def _get_client() -> VulnersClient:
         return _client
     async with _client_lock:
         if _client is None:
-            c = VulnersClient()  # uses settings.vulners_base_url and env default key
+            c = VulnersClient()  # uses settings.vulners_base_url; no server-side key
             await c.start()
             _client = c
     return _client
@@ -221,7 +219,7 @@ async def search_lucene(
     query: Annotated[str, "Lucene query string for searching vulnerabilities. Supports Boolean operators (AND, OR, NOT), field-specific queries, range searches, and wildcard matching. NEVER use for specific software versions - use audit_software instead. For vendor/product searches use cnaAffected.vendor and cnaAffected.product (NOT affectedSoftware which does not exist)."], 
     skip: Annotated[int, "Number of results to skip for pagination. Default is 0."] = 0, 
     size: Annotated[int, "Maximum number of results to return. Default is 20."] = 20
-) -> LuceneSearchResponse:
+) -> Any:
     """🔍 DISCOVERY TOOL FOR UNKNOWN VULNERABILITIES 🔍
     Full-text search in Vulners Knowledge Base.
     Advanced vulnerability search tool using Lucene syntax to query a comprehensive database of over 4 million vulnerability bulletins from various sources.
@@ -376,7 +374,7 @@ async def search_lucene(
     # Always request all fields for comprehensive vulnerability data
     body = {"query": query, "skip": skip, "size": size, "fields": ["*"]}
     result = await client.search_lucene(body, headers=_forward_headers())
-    # TODO: fix model to match actual response structure
+    # TODO(MR tool-contract): fixture-derived models
     return result
 
 
@@ -592,7 +590,7 @@ async def audit_linux_packages(
     version: Annotated[str, "Distribution version/release (e.g., 22.04, 12, 8, 40). Must match a supported version for the specified OS."], 
     package: Annotated[List[str], "List of package names with versions (e.g., ['openssl-3.0.2', 'curl-7.81.0-1ubuntu1.14']). Format: 'name-version' or 'name-version-release'."], 
     include_candidates: Annotated[Optional[bool], "Whether to include potential matches in results. If None, uses default behavior (typically false)."] = None
-) -> LinuxPackageAuditResponse:
+) -> Any:
     """Linux package audit (RPM/DEB) for a given distro + version.
 
     Endpoint:
@@ -641,7 +639,7 @@ async def audit_linux_packages(
     if include_candidates is not None:
         body["include_candidates"] = include_candidates
     result = await client.audit_linux_packages(body, headers=_forward_headers())
-    # TODO: fix model to match actual response structure
+    # TODO(MR tool-contract): fixture-derived models
     return result
 
 
@@ -651,7 +649,7 @@ async def audit_linux_packages(
 )
 async def query_autocomplete(
     body: Annotated[Dict[str, Any], "Request body containing autocomplete parameters. Should include 'query' field with partial search term (e.g., 'openssl', 'CVE-2024-', 'microsoft windows')."]
-) -> AutocompleteResponse:
+) -> Any:
     """Autocomplete helper for search inputs (vendors, products, CVEs, etc.).
 
     Endpoint:
@@ -673,7 +671,7 @@ async def query_autocomplete(
     """
     client = await _get_client()
     result = await client.query_autocomplete(body, headers=_forward_headers())
-    # TODO: fix model to match actual response structure
+    # TODO(MR tool-contract): fixture-derived models
     return result
 
 
@@ -685,7 +683,7 @@ async def search_cpe(
     vendor: Annotated[str, "Vendor name to search for (e.g., 'microsoft', 'google', 'apache', 'oracle'). Case-insensitive."], 
     product: Annotated[str, "Product name to search for (e.g., 'windows_10', 'chrome', 'http_server', 'java'). Case-insensitive."], 
     size: Annotated[Optional[int], "Maximum number of CPE results to return. If None, uses server default."] = None
-) -> CpeSearchResponse:
+) -> Any:
     """Find CPE strings by vendor+product (latest schema).
 
     Endpoint:
@@ -709,7 +707,7 @@ async def search_cpe(
     result = await client.search_cpe(
         vendor=vendor, product=product, size=size, headers=_forward_headers()
     )
-    # TODO: fix model to match actual response structure
+    # TODO(MR tool-contract): fixture-derived models
     return result
 
 

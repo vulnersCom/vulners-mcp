@@ -11,12 +11,15 @@ each other.
 from __future__ import annotations
 
 import json
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator, Callable, Iterator
 
+import httpx
 import pytest
 import respx
 from fastmcp import Client
+from fastmcp.client.transports import StreamableHttpTransport
 from starlette.testclient import TestClient
 
 import vulners_mcp.server as server_module
@@ -82,6 +85,52 @@ def vulners_api() -> Iterator[respx.MockRouter]:
         base_url=settings.vulners_base_url, assert_all_mocked=True
     ) as router:
         yield router
+
+
+@pytest.fixture
+def mcp_streamable_http_client_factory() -> Callable[..., Any]:
+    """Factory for a real Streamable-HTTP-over-ASGI ``fastmcp.Client``.
+
+    Unlike ``mcp_client`` (wired directly to the in-process ``FastMCP``
+    object, which never goes through an HTTP request at all), this drives an
+    actual request through ``mcp.http_app()`` via ``httpx.ASGITransport`` —
+    no real socket, but genuine Starlette request/response handling. That
+    matters because ``server._forward_headers`` reads headers via
+    ``get_http_headers()``, which only returns anything when there is a real
+    inbound HTTP request in flight. Use this fixture (over ``mcp_client``)
+    for any test that asserts on header forwarding.
+    """
+
+    @asynccontextmanager
+    async def _make(headers: dict[str, str] | None = None) -> AsyncIterator[Client]:
+        app = mcp.http_app()
+
+        def _httpx_client_factory(
+            headers: dict[str, str] | None = None,
+            auth: httpx.Auth | None = None,
+            follow_redirects: bool = True,
+            **kwargs: Any,
+        ) -> httpx.AsyncClient:
+            return httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app),
+                base_url="http://testserver",
+                headers=headers,
+                follow_redirects=follow_redirects,
+            )
+
+        transport = StreamableHttpTransport(
+            url="http://testserver/mcp",
+            headers=headers,
+            httpx_client_factory=_httpx_client_factory,
+        )
+        # ``mcp.http_app()`` needs its lifespan run (it starts the streamable
+        # HTTP session manager's task group) — the same thing a parent ASGI
+        # app or `starlette.testclient.TestClient` would normally do for us.
+        async with app.router.lifespan_context(app):
+            async with Client(transport) as connected_client:
+                yield connected_client
+
+    return _make
 
 
 @pytest.fixture
