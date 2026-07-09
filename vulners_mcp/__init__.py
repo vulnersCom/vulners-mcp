@@ -1,9 +1,19 @@
-import fastmcp
-import uvicorn
+from vulners_mcp.logging_utils import configure_logging
 
-from vulners_mcp._version import __version__
-from vulners_mcp.server import mcp
-from .settings import settings
+# Configure logging before anything else is imported: importing
+# vulners_mcp.server below pulls in vulners_mcp.auth -> vulners_mcp.settings,
+# and settings.py fires its own startup INFO log (log_anon_tier_key_source())
+# as a module-level side effect at import time -- i.e. before main() below
+# ever runs. Doing this first, rather than only inside main(), is what makes
+# that log line (and any other import-time logging) actually show up.
+configure_logging()
+
+import fastmcp  # noqa: E402  (local: logging must be configured first, see above)
+import uvicorn  # noqa: E402
+
+from vulners_mcp._version import __version__  # noqa: E402
+from vulners_mcp.server import mcp  # noqa: E402
+from .settings import settings  # noqa: E402
 
 __all__ = ["__version__", "main", "mcp", "settings"]
 
@@ -21,6 +31,7 @@ def main():
     # string so uvicorn imports "vulners_mcp.asgi" itself; host/port match
     # what mcp.run(transport="http") used before (fastmcp.settings, i.e. the
     # FASTMCP_HOST / FASTMCP_PORT env vars).
+    configure_logging()  # no-op if already configured above; cheap safety net
     uvicorn.run(
         "vulners_mcp.asgi:app",
         host=fastmcp.settings.host,

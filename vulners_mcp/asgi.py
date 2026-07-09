@@ -24,8 +24,17 @@ from fastmcp.server.http import StarletteWithLifespan
 from starlette.applications import Starlette
 from starlette.routing import BaseRoute, Mount
 
-from .server import mcp
-from .settings import settings
+from .logging_utils import configure_logging
+
+# Also configure logging here (not just in vulners_mcp.__init__.main()) so a
+# bare `uvicorn vulners_mcp.asgi:app` -- bypassing main() entirely -- still
+# logs. In practice vulners_mcp/__init__.py (imported first, as this
+# module's parent package) already configured it; this call is then a cheap
+# idempotent no-op, not a second configuration.
+configure_logging()
+
+from .server import mcp  # noqa: E402  (local: logging must be configured first, see above)
+from .settings import settings  # noqa: E402
 
 # The FastMCP Streamable HTTP app. A single object that carries the "/mcp"
 # endpoint, every `@mcp.custom_route`, AND the streamable-http session
