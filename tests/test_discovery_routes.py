@@ -4,11 +4,10 @@ They exercise the ASGI app returned by ``FastMCP.http_app()`` (which carries the
 ``@mcp.custom_route`` handlers) with Starlette's ``TestClient`` and assert that
 each new route returns 200, the right content type, and key content markers.
 
-A few tests below need more than ``mcp.http_app()`` alone: the agent index
-(``/.well-known/agents/index.json``) lists A2A endpoints that only exist on
-the fully composed ASGI app (MCP + A2A, see ``vulners_mcp.asgi``), not on the
-bare MCP app. Those build a fresh composed app locally, following the same
-pattern as ``tests/test_asgi_composition.py``.
+One test below needs more than ``mcp.http_app()`` alone: the agent index
+self-consistency check builds the fully composed ASGI app (see
+``vulners_mcp.asgi``) locally, following the same pattern as
+``tests/test_asgi_composition.py``.
 """
 
 from __future__ import annotations
@@ -21,7 +20,6 @@ from mcp.types import LATEST_PROTOCOL_VERSION
 from starlette.testclient import TestClient
 
 from vulners_mcp import discovery
-from vulners_mcp.a2a_app import build_a2a_routes
 from vulners_mcp.asgi import build_asgi_app
 from vulners_mcp.server import mcp
 from vulners_mcp.settings import settings
@@ -75,26 +73,13 @@ def test_llms_txt_describes_the_anonymous_tier(client: TestClient) -> None:
     assert str(settings.anon_max_size) in body
 
 
-def test_llms_txt_has_a2a_section(client: TestClient) -> None:
-    """A2A is real now (shipped in the same release) -- llms.txt must say so."""
-    body = client.get("/llms.txt").text
-    assert "## A2A" in body
-    assert "https://mcp.vulners.com/a2a" in body
-    assert "https://mcp.vulners.com/.well-known/agent-card.json" in body
-    # A2A shares the same anonymous-tier policy as MCP now -- the old "no
-    # anonymous option" hard-gate phrasing must be gone.
-    a2a_section = body.split("## A2A", 1)[1].split("## Links", 1)[0]
-    assert "no anonymous option" not in a2a_section
-    assert "anonymous tier" in a2a_section
-
-
 async def test_llms_txt_tool_names_match_registered_tools(client: TestClient) -> None:
     """Drift guard: the tool list in llms.txt must exactly match the tools
     actually registered on the running server -- not a hand-maintained copy
     that can silently fall out of sync when a tool is added, renamed, or
     removed."""
     body = client.get("/llms.txt").text
-    tools_section = body.split("## Tools", 1)[1].split("## A2A", 1)[0]
+    tools_section = body.split("## Tools", 1)[1].split("## Links", 1)[0]
     listed_tools = set(re.findall(r"^- (\w+):", tools_section, flags=re.MULTILINE))
 
     live_tools = set((await mcp.get_tools()).keys())
@@ -116,7 +101,6 @@ def test_auth_md(client: TestClient) -> None:
     assert "VULNERS_API_KEY" in body
     assert "https://vulners.com/auth.md" in body
     assert "https://mcp.vulners.com/.well-known/mcp/server-card.json" in body
-    assert "https://mcp.vulners.com/.well-known/agent-card.json" in body
 
 
 def test_auth_md_describes_the_anonymous_tier(client: TestClient) -> None:
@@ -236,7 +220,7 @@ def test_agents_index_json(client: TestClient) -> None:
         "domain": "vulners.com",
         "url": "https://vulners.com",
     }
-    assert {agent["protocol"] for agent in data["agents"]} == {"mcp", "a2a"}
+    assert {agent["protocol"] for agent in data["agents"]} == {"mcp"}
     for agent in data["agents"]:
         assert agent["endpoint"].startswith("https://mcp.vulners.com/")
         assert agent["card"].startswith("https://mcp.vulners.com/")
@@ -260,14 +244,15 @@ def _all_route_paths(app: object) -> set[str]:
 
 def test_agents_index_urls_are_real_routes_on_the_composed_app() -> None:
     """Self-consistency guard: every endpoint/card URL the agent index lists
-    must resolve to an actual route on the fully composed ASGI app (MCP +
-    A2A) -- not just a plausible-looking string. Uses a fresh ``mcp_app`` +
-    ``build_asgi_app(target_app=...)`` rather than the module-level
-    singleton, per the "run once" lifespan constraint documented in
+    must resolve to an actual route on the fully composed ASGI app -- not
+    just a plausible-looking string. Uses a fresh ``mcp_app`` +
+    ``build_asgi_app(target_app=...)`` (no extra routes; MCP is the only
+    agent this stack ships) rather than the module-level singleton, per the
+    "run once" lifespan constraint documented in
     ``tests/test_asgi_composition.py``.
     """
     fresh_mcp_app = mcp.http_app(path="/mcp", stateless_http=settings.mcp_stateless_http)
-    composed = build_asgi_app(extra_routes=build_a2a_routes(), target_app=fresh_mcp_app)
+    composed = build_asgi_app(target_app=fresh_mcp_app)
     known_paths = _all_route_paths(composed)
 
     data = discovery.build_agents_index()

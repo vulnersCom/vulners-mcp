@@ -13,19 +13,14 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from .a2a_card import A2A_PUBLIC_URL
 from .settings import settings
 
-# Public URLs referenced by the discovery documents. A2A_PUBLIC_URL is
-# imported rather than redeclared here so the MCP-side documents (llms.txt,
-# the agents index) can never drift from the URL the A2A agent card itself
-# advertises (see vulners_mcp/a2a_card.py).
+# Public URLs referenced by the discovery documents.
 MCP_ENDPOINT = "https://mcp.vulners.com/mcp"
 HEALTH_URL = "https://mcp.vulners.com/health"
 LLMS_TXT_URL = "https://mcp.vulners.com/llms.txt"
 AUTH_MD_URL = "https://mcp.vulners.com/auth.md"
 MCP_SERVER_CARD_URL = "https://mcp.vulners.com/.well-known/mcp/server-card.json"
-AGENT_CARD_URL = "https://mcp.vulners.com/.well-known/agent-card.json"
 AGENTS_INDEX_URL = "https://mcp.vulners.com/.well-known/agents/index.json"
 WEBSITE_URL = "https://vulners.com"
 REPOSITORY_URL = "https://github.com/vulnersCom/vulners-mcp"
@@ -41,9 +36,9 @@ _FALLBACK_PROTOCOL_VERSION = "2025-06-18"
 
 # -------------------- llms.txt --------------------
 # An f-string, deliberately: every URL below is interpolated from the same
-# constants ``build_server_card``/``build_agents_index``/``a2a_card`` use, so
-# this document cannot silently drift from what the server actually serves
-# (see tests/test_discovery_routes.py for the tool-name drift guard on top).
+# constants ``build_server_card``/``build_agents_index`` use, so this
+# document cannot silently drift from what the server actually serves (see
+# tests/test_discovery_routes.py for the tool-name drift guard on top).
 LLMS_TXT = f"""\
 # Vulners MCP
 
@@ -66,12 +61,6 @@ This server holds no privileged API key of its own. Send your personal Vulners A
 - audit_linux_packages: Audit Linux packages (RPM/DEB) for a given distribution and version.
 - query_autocomplete: Autocomplete suggestions for vendors, products, and CVEs.
 - search_cpe: Find CPE strings by vendor and product.
-
-## A2A
-
-- A2A endpoint: {A2A_PUBLIC_URL} (JSON-RPC, protocol A2A 1.0, with A2A 0.3 wire-format compatibility)
-- Agent card: {AGENT_CARD_URL}
-- Same authentication policy as MCP: send `X-Api-Key` for full limits, or omit it for the anonymous tier (reduced limits, when configured on this deployment).
 
 ## Links
 
@@ -97,9 +86,9 @@ This server never has a privileged Vulners API key of its own to spend on your b
 
 ## Two ways to call it
 
-- **Bring your own key (full limits).** Send your personal Vulners API key in the `X-Api-Key` HTTP request header -- for both MCP tool calls (`tools/call`) and A2A messages (`POST /a2a`). It is forwarded to the Vulners API for that request only: full limits, no result-size clamp, no app-level rate limit.
+- **Bring your own key (full limits).** Send your personal Vulners API key in the `X-Api-Key` HTTP request header on MCP tool calls (`tools/call`). It is forwarded to the Vulners API for that request only: full limits, no result-size clamp, no app-level rate limit.
 - **Anonymous tier (reduced limits).** Omit the `X-Api-Key` header entirely and the call still goes through, on this deployment's own dedicated, low-privilege key -- when one is configured. Result-size arguments are clamped to {settings.anon_max_size}, and anonymous calls share a modest, app-level rate limit protecting that shared key's quota. If the anonymous-tier key's own quota or rate limit is exhausted upstream, you get a structured error telling you to send your own key for full limits. If this deployment has no anonymous tier configured at all, a keyless call fails immediately with a guidance error instead of being forwarded.
-- **Discovery is always open**: `initialize` and `tools/list` (MCP), and the agent card (A2A), work without a key either way, so an agent can inspect what this server offers before deciding whether it needs its own key.
+- **Discovery is always open**: `initialize` and `tools/list` work without a key either way, so an agent can inspect what this server offers before deciding whether it needs its own key.
 
 ## Getting or rotating a key (humans only)
 
@@ -118,7 +107,6 @@ For the complete, non-agent-specific walkthrough of Vulners account creation and
 ## Machine-readable descriptors
 
 - MCP server card: {MCP_SERVER_CARD_URL}
-- A2A agent card: {AGENT_CARD_URL}
 """
 
 
@@ -177,10 +165,10 @@ def build_server_card(version: str) -> Dict[str, Any]:
             "prompts": {"listChanged": True},
         },
         # Mirrors the real policy enforced by auth.AuthMiddleware (HTTP
-        # tools/call) and a2a_executor (A2A messages) -- this section is a
-        # description of that enforcement, not a separate promise, so it
-        # can't drift from what the server actually does. maxResultSize is
-        # read live from settings.anon_max_size, not a literal.
+        # tools/call) -- this section is a description of that enforcement,
+        # not a separate promise, so it can't drift from what the server
+        # actually does. maxResultSize is read live from
+        # settings.anon_max_size, not a literal.
         "authentication": {
             "anonymousDiscovery": True,
             "toolInvocation": {
@@ -242,13 +230,11 @@ def build_agents_index() -> Dict[str, Any]:
 
     This is the artifact a DNS-AID ``_index._agents.vulners.com`` TXT record
     would point at: a small, organization-level directory of every
-    agent-reachable protocol this origin exposes. Both entries are honest to
-    list because MCP and A2A ship in the same release (see the a2a-server
-    and discovery-truth MRs) -- every ``endpoint``/``card`` URL here is built
-    from the same constants the individual routes use (``MCP_ENDPOINT``,
-    ``MCP_SERVER_CARD_URL``, ``A2A_PUBLIC_URL`` from ``a2a_card.py``,
-    ``AGENT_CARD_URL``), and a dedicated test cross-checks each one against
-    the app's own route table so this can't quietly go stale (see
+    agent-reachable protocol this origin exposes. Currently that's just MCP.
+    The entry's ``endpoint``/``card`` URLs are built from the same constants
+    the individual routes use (``MCP_ENDPOINT``, ``MCP_SERVER_CARD_URL``),
+    and a dedicated test cross-checks each one against the app's own route
+    table so this can't quietly go stale (see
     ``tests/test_discovery_routes.py``).
     """
     return {
@@ -265,13 +251,6 @@ def build_agents_index() -> Dict[str, Any]:
                 "endpoint": MCP_ENDPOINT,
                 "card": MCP_SERVER_CARD_URL,
                 "dns": "_mcp._agents.vulners.com",
-            },
-            {
-                "name": "Vulners A2A",
-                "protocol": "a2a",
-                "endpoint": A2A_PUBLIC_URL,
-                "card": AGENT_CARD_URL,
-                "dns": "_a2a._agents.vulners.com",
             },
         ],
     }
