@@ -6,8 +6,9 @@ from typing import Any, Dict, List, Optional, Union, Annotated
 
 from fastmcp import FastMCP
 from starlette.requests import Request
-from starlette.responses import PlainTextResponse, HTMLResponse
+from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
+from . import discovery
 from .auth import AuthMiddleware, resolve_effective_auth
 from .vulners_client import VulnersClient
 
@@ -1215,3 +1216,37 @@ async def root(request: Request) -> HTMLResponse:
     with open("./vulners_mcp/mcp.html", "r", encoding="utf-8") as file:
         html_content = file.read()
     return HTMLResponse(content=html_content)
+
+
+# -------------------- Agent discovery documents --------------------
+# Served on the MCP subdomain (mcp.vulners.com) so agents and crawlers can
+# discover the server, its auth model, and its API. See vulners_mcp/discovery.py.
+
+
+@mcp.custom_route("/llms.txt", methods=["GET"])
+async def llms_txt(request: Request) -> PlainTextResponse:
+    return PlainTextResponse(
+        discovery.LLMS_TXT, media_type="text/plain; charset=utf-8"
+    )
+
+
+@mcp.custom_route("/robots.txt", methods=["GET"])
+async def robots_txt(request: Request) -> PlainTextResponse:
+    return PlainTextResponse(
+        discovery.ROBOTS_TXT, media_type="text/plain; charset=utf-8"
+    )
+
+
+@mcp.custom_route("/.well-known/mcp/server-card.json", methods=["GET"])
+async def mcp_server_card(request: Request) -> JSONResponse:
+    # Read the version from the running FastMCP instance so the card always
+    # matches the serverInfo.version returned by the initialize handshake.
+    return JSONResponse(discovery.build_server_card(mcp.version))
+
+
+@mcp.custom_route("/.well-known/api-catalog", methods=["GET"])
+async def api_catalog(request: Request) -> JSONResponse:
+    return JSONResponse(
+        discovery.build_api_catalog(),
+        media_type="application/linkset+json",
+    )
