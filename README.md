@@ -19,6 +19,7 @@
 
 - [Requirements](#requirements)  
 - [Obtaining Vulners API Key](#obtaining-vulners-api-key)  
+- [Authentication](#authentication)  
 - [Quick Start with Claude Desktop](#quick-start-with-claude-desktop)  
 - [Installation & Deployment](#installation--deployment)  
   - [Docker with run script](#docker-with-run-script)
@@ -47,6 +48,55 @@ Please, register at [Vulners website](https://vulners.com).
 Go to the personal menu by clicking at your name at the right top corner.
 Follow "API KEYS" tab.
 Generate API key with scope "api" and use it with the library.
+
+---
+
+## Authentication
+
+How you provide your API key depends on which transport you run:
+
+| Transport | Who runs it | How the key is provided |
+|---|---|---|
+| **stdio** | You, locally (Claude Desktop, a local build) | `VULNERS_API_KEY` environment variable, set once for your local server process. This is *your own* key, used only by *your* local server instance. |
+| **HTTP** (`mcp.vulners.com` or your own hosted deployment) | A shared/public server, potentially serving many callers | Either your own `X-Api-Key` HTTP header sent on **every request** (full limits, forwarded verbatim), or nothing at all -- see the anonymous tier below. |
+
+### Anonymous tier (HTTP only)
+
+`initialize` and `tools/list` always work without a key, so an agent can
+discover what the server offers before it has one. A `tools/call` sent
+without an `X-Api-Key` header behaves according to whether this deployment
+has an anonymous tier configured:
+
+| Caller | tools/call behavior |
+|---|---|
+| No `X-Api-Key`, anonymous tier configured | **Allowed.** Forwarded on this deployment's anonymous-tier key. Any `size`-style argument is clamped to a small maximum, and anonymous calls share a modest app-level rate limit. If that upstream key hits its own quota/rate limit, you get a structured error pointing you at sending your own key. |
+| No `X-Api-Key`, anonymous tier NOT configured | Fails immediately with a structured guidance error (see below) -- nothing is sent upstream. |
+| `X-Api-Key` present, but Vulners rejects it (401/403) | Sanitized error. The server **never** silently falls back to the anonymous-tier key on your behalf. |
+| `X-Api-Key` present and valid | Forwarded verbatim, full limits, no clamp, no app-level rate limit. |
+
+Example of the guidance error (no key, no anonymous tier configured):
+
+```json
+{
+  "isError": true,
+  "content": [{
+    "type": "text",
+    "text": "This server does not hold a privileged API key, and no anonymous tier is configured on this deployment. Send your personal Vulners API key in the X-Api-Key HTTP header. Get a key: sign in at https://vulners.com/userinfo (human, in a browser). Details: https://mcp.vulners.com/auth.md (When configured, this server's anonymous tier is itself size- and rate-limited -- your own key always gets full limits.)"
+  }]
+}
+```
+
+Sending your own `X-Api-Key` always gets you full, uncapped (at this layer)
+access -- the anonymous tier exists so an agent can try the server out, or
+make a light, occasional call, without first obtaining a key.
+
+**No env change is required to enable the anonymous tier on a deployment
+that already sets `VULNERS_API_KEY`.** In HTTP mode, `VULNERS_MCP_ANON_API_KEY`
+falls back to `VULNERS_API_KEY` when unset -- so that same key now also backs
+the (rate-limited, size-clamped) anonymous tier. To back the anonymous tier
+with a *separate*, dedicated key instead -- so it isn't also your own
+operator key -- set `VULNERS_MCP_ANON_API_KEY` explicitly; it always takes
+precedence over the `VULNERS_API_KEY` fallback when both are set.
 
 ---
 
@@ -113,30 +163,39 @@ You can now ask Claude questions like:
 For easy HTTP mode deployment, use the provided run script:
 
 ```bash
-# Create .env file with your API key
-echo "VULNERS_API_KEY=your_api_key_here" > .env
-
-# Run the server
 ./run-docker.sh
 ```
 
-The server will start in HTTP mode at <http://0.0.0.0:8000/mcp>
+The server will start in HTTP mode at <http://0.0.0.0:8000/mcp>. No API key is
+needed to start it — see [Authentication](#authentication): each caller
+sends their own key as an `X-Api-Key` header per request.
 
 ### Docker (manual)
 
-Run the MCP server in HTTP mode:
+Run the MCP server in HTTP mode (no API key needed to start it):
 
 ```bash
 docker run -d \
   --name vulners-mcp-http \
   -e MCP_TRANSPORT_MODE="http" \
   -e VULNERS_BASE_URL="https://vulners.com" \
-  -e VULNERS_API_KEY="your_api_key" \
   -p 8000:8000 \
   vulners-mcp:latest
 ```
 
-For Claude Desktop (stdio mode), the `-i` flag is used instead:
+Callers then send their own key per request, e.g.:
+
+```bash
+curl -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-Api-Key: your_api_key" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_supported_os","arguments":{}}}'
+```
+
+For Claude Desktop (stdio mode), the `-i` flag is used instead, and the key
+*is* set as an environment variable (see [Authentication](#authentication) —
+stdio has no per-request header to carry one):
 
 ```bash
 docker run -i --rm \
@@ -150,6 +209,9 @@ docker run -i --rm \
 git clone https://github.com/vulnersCom/vulners-mcp.git
 cd vulners-mcp
 poetry install 
+# Default transport is stdio, which is why a key belongs in the environment
+# here -- see Authentication above. Not needed/used if you instead run with
+# MCP_TRANSPORT_MODE=http.
 export VULNERS_API_KEY="your_api_key"
 poetry run python -m vulners_mcp
 ```
@@ -160,9 +222,13 @@ poetry run python -m vulners_mcp
 
 | Variable                       | Type    | Default               | Description                                               |
 |--------------------------------|---------|-----------------------|-----------------------------------------------------------|
-| `VULNERS_API_KEY`              | string  | *required*            | API key for authenticating with Vulners                   |
+| `VULNERS_API_KEY`              | string  | *unset*               | **stdio transport:** the local operator's own Vulners API key (see [Authentication](#authentication)). **HTTP transport:** also backs the anonymous tier when `VULNERS_MCP_ANON_API_KEY` is unset -- no env change required to enable the anonymous tier on a deployment that already sets this. |
+| `VULNERS_MCP_ANON_API_KEY`     | string  | *unset*                | **HTTP transport only.** A Vulners API key backing the anonymous tier -- callers who send no `X-Api-Key` get forwarded on this key instead of being rejected (see [Anonymous tier](#anonymous-tier-http-only)). Takes precedence over the `VULNERS_API_KEY` fallback when set. If neither is set, there is no anonymous tier: a keyless `tools/call` gets the guidance error. |
+| `ANON_MAX_SIZE`                | integer | `10`                  | HTTP mode, anonymous tier only. Any top-level integer `size` tool argument is clamped to this value for anonymous-tier calls. Keyed calls are never clamped. |
 | `VULNERS_BASE_URL`             | string  | `https://vulners.com` | Base URL for the Vulners API (without /api suffix)        |
 | `MCP_TRANSPORT_MODE`           | string  | `stdio`               | Force transport mode: `http` or `streamable-http`         |
+| `MCP_STATELESS_HTTP`           | boolean | `true`                | HTTP mode only. Each request gets its own transport with no server-side `mcp-session-id` continuity, so the server can scale horizontally behind a load balancer with no sticky routing. |
+| `MCP_RATE_LIMIT_RPS`           | number  | `30`                  | HTTP mode, anonymous tier only. Generous global (not per-caller) requests-per-second ceiling protecting the shared anonymous-tier key's quota -- an abuse-of-last-resort belt. Keyed calls are never capped here; real per-IP throttling belongs at the edge (e.g. Cloudflare) in front of a hosted deployment. |
 | `FASTMCP_HOST`                 | string  | `0.0.0.0`             | Host/interface on which MCP server binds (HTTP mode only) |
 | `FASTMCP_PORT`                 | integer | `8000`                | Port for MCP server (HTTP mode only)                      |
 | `FASTMCP_STREAMABLE_HTTP_PATH` | string  | `/mcp`                | Path for the streamable MCP endpoint (HTTP mode only)     |
@@ -194,6 +260,18 @@ http://<FASTMCP_HOST>:<FASTMCP_PORT>/mcp
 ```
 
 Default: `http://0.0.0.0:8000/mcp`
+
+Send your Vulners API key as an `X-Api-Key` header on every request for full,
+uncapped limits (see [Authentication](#authentication)). `initialize` and
+`tools/list` always work without one; a keyless `tools/call` either runs on
+this deployment's anonymous tier (if configured -- reduced limits) or is
+rejected immediately with a structured guidance error instead of being
+forwarded upstream (if not).
+
+The server is stateless (`MCP_STATELESS_HTTP=true` by default): every
+request is handled independently, with no server-side session continuity
+required between calls, so it can be deployed behind a load balancer with no
+sticky routing.
 
 ---
 

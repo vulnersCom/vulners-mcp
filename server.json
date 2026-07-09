@@ -6,16 +6,22 @@
     "url": "https://github.com/vulnersCom/vulners-mcp",
     "source": "github"
   },
-  "version": "1.0.3",
+  "version": "1.13.0",
   "packages": [
     {
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "vulners-mcp",
-      "version": "1.0.3",
+      "version": "1.13.0",
       "transport": {
         "type": "stdio"
       }
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.vulners.com/mcp"
     }
   ]
 }

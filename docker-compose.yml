@@ -14,7 +14,9 @@ services:
     environment:
       MCP_TRANSPORT_MODE: "http"
       VULNERS_BASE_URL: "https://vulners.com"
-      VULNERS_API_KEY: "${VULNERS_API_KEY}"
+      # No VULNERS_API_KEY: the HTTP server never spends a server-side key --
+      # send your own Vulners API key as an X-Api-Key header on each request
+      # through the inspector (e.g. via its "Configuration" > custom headers).
     ports:
       - "8000:8000"
     healthcheck:

@@ -36,9 +36,6 @@ ENV/
 env.bak/
 venv.bak/
 
-# Poetry
-poetry.lock
-
 # PyInstaller
 *.manifest
 *.spec

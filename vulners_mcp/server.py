@@ -5,42 +5,54 @@ import asyncio
 from typing import Any, Dict, List, Optional, Union, Annotated
 
 from fastmcp import FastMCP
-from fastmcp.server.dependencies import get_http_headers
 from starlette.requests import Request
-from starlette.responses import PlainTextResponse, HTMLResponse
+from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
-from .models import (
-    AutocompleteResponse,
-    CpeSearchResponse,
-    LinuxPackageAuditResponse,
-    LuceneSearchResponse,
-)
+from . import discovery
+from .auth import AuthMiddleware, resolve_effective_auth
 from .vulners_client import VulnersClient
 
 # -------------------- FastMCP server config --------------------
-mcp = FastMCP("Vulners MCP")
+from vulners_mcp._version import __version__  # noqa: E402  (local: avoid import-block churn)
+
+mcp = FastMCP("Vulners MCP", version=__version__)
+
+# Auth gate + anonymous-tier policy (key resolution, size clamp, app-level
+# rate limit) for tools/call over HTTP -- see vulners_mcp.auth for the full
+# policy. Kept as a module-level name (not just passed inline) so tests can
+# inspect and reset its rate limiter's token bucket between runs -- it lives
+# on the shared, session-wide `mcp` object, so state would otherwise leak
+# across tests.
+auth_middleware = AuthMiddleware()
+mcp.add_middleware(auth_middleware)
 
 
 # -------------------- Per-request auth header forwarding --------------------
-# Only forward auth-related headers; avoid hop-by-hop headers, etc.
-_FORWARDABLE = {"x-api-key", "authorization"}
+# Only X-Api-Key is forwarded upstream. Authorization is deliberately NOT
+# forwarded: it may carry a bearer token scoped to *this* MCP server (e.g. an
+# OAuth session with the MCP host) that has nothing to do with Vulners, and
+# leaking it to a third-party upstream would be a token-leak bug. Vulners
+# auth is X-Api-Key only.
+_FORWARDABLE = {"x-api-key"}
 
 
 def _forward_headers() -> Dict[str, str] | None:
     """
-    Extract forwardable auth headers from the current MCP HTTP request.
-    Returns a dict like {"X-Api-Key": "..."} or {"Authorization": "Bearer ..."}.
-    If no relevant header is present, returns None (the VulnersClient will fall back to env key).
-    """
-    raw = get_http_headers(include_all=True) or {}
-    lower = {str(k).lower(): str(v) for k, v in raw.items()}
+    The forwardable auth header (X-Api-Key only) for the current MCP call.
+    Returns a dict like {"X-Api-Key": "..."}, or None if there is no key to
+    send.
 
-    out: Dict[str, str] = {}
-    if "x-api-key" in lower and lower["x-api-key"]:
-        out["X-Api-Key"] = lower["x-api-key"].strip()
-    if "authorization" in lower and lower["authorization"]:
-        out["Authorization"] = lower["authorization"].strip()
-    return out or None
+    Thin wrapper around ``auth.resolve_effective_auth()`` -- the single
+    source of truth for "which key does this call use", shared with
+    ``AuthMiddleware``. In practice, by the time a tool body calls this over
+    HTTP, ``AuthMiddleware.on_call_tool`` has already run and either raised
+    (no key, no anon tier -- see ``auth.NO_API_KEY_MESSAGE``) or resolved a
+    key (the caller's own, or this deployment's anon-tier key), so this
+    never returns ``None`` on the HTTP path. Over stdio it forwards the
+    local operator's own key (``settings.stdio_api_key``), or ``None`` if
+    that isn't set either.
+    """
+    return resolve_effective_auth().headers
 
 
 # -------------------- Lazy, shared Vulners HTTP client --------------------
@@ -54,7 +66,7 @@ async def _get_client() -> VulnersClient:
         return _client
     async with _client_lock:
         if _client is None:
-            c = VulnersClient()  # uses settings.vulners_base_url and env default key
+            c = VulnersClient()  # uses settings.vulners_base_url; no server-side key
             await c.start()
             _client = c
     return _client
@@ -219,7 +231,7 @@ async def search_lucene(
     query: Annotated[str, "Lucene query string for searching vulnerabilities. Supports Boolean operators (AND, OR, NOT), field-specific queries, range searches, and wildcard matching. NEVER use for specific software versions - use audit_software instead. For vendor/product searches use cnaAffected.vendor and cnaAffected.product (NOT affectedSoftware which does not exist)."], 
     skip: Annotated[int, "Number of results to skip for pagination. Default is 0."] = 0, 
     size: Annotated[int, "Maximum number of results to return. Default is 20."] = 20
-) -> LuceneSearchResponse:
+) -> Any:
     """🔍 DISCOVERY TOOL FOR UNKNOWN VULNERABILITIES 🔍
     Full-text search in Vulners Knowledge Base.
     Advanced vulnerability search tool using Lucene syntax to query a comprehensive database of over 4 million vulnerability bulletins from various sources.
@@ -374,7 +386,7 @@ async def search_lucene(
     # Always request all fields for comprehensive vulnerability data
     body = {"query": query, "skip": skip, "size": size, "fields": ["*"]}
     result = await client.search_lucene(body, headers=_forward_headers())
-    # TODO: fix model to match actual response structure
+    # TODO(MR tool-contract): fixture-derived models
     return result
 
 
@@ -590,7 +602,7 @@ async def audit_linux_packages(
     version: Annotated[str, "Distribution version/release (e.g., 22.04, 12, 8, 40). Must match a supported version for the specified OS."], 
     package: Annotated[List[str], "List of package names with versions (e.g., ['openssl-3.0.2', 'curl-7.81.0-1ubuntu1.14']). Format: 'name-version' or 'name-version-release'."], 
     include_candidates: Annotated[Optional[bool], "Whether to include potential matches in results. If None, uses default behavior (typically false)."] = None
-) -> LinuxPackageAuditResponse:
+) -> Any:
     """Linux package audit (RPM/DEB) for a given distro + version.
 
     Endpoint:
@@ -639,7 +651,7 @@ async def audit_linux_packages(
     if include_candidates is not None:
         body["include_candidates"] = include_candidates
     result = await client.audit_linux_packages(body, headers=_forward_headers())
-    # TODO: fix model to match actual response structure
+    # TODO(MR tool-contract): fixture-derived models
     return result
 
 
@@ -649,7 +661,7 @@ async def audit_linux_packages(
 )
 async def query_autocomplete(
     body: Annotated[Dict[str, Any], "Request body containing autocomplete parameters. Should include 'query' field with partial search term (e.g., 'openssl', 'CVE-2024-', 'microsoft windows')."]
-) -> AutocompleteResponse:
+) -> Any:
     """Autocomplete helper for search inputs (vendors, products, CVEs, etc.).
 
     Endpoint:
@@ -671,7 +683,7 @@ async def query_autocomplete(
     """
     client = await _get_client()
     result = await client.query_autocomplete(body, headers=_forward_headers())
-    # TODO: fix model to match actual response structure
+    # TODO(MR tool-contract): fixture-derived models
     return result
 
 
@@ -683,7 +695,7 @@ async def search_cpe(
     vendor: Annotated[str, "Vendor name to search for (e.g., 'microsoft', 'google', 'apache', 'oracle'). Case-insensitive."], 
     product: Annotated[str, "Product name to search for (e.g., 'windows_10', 'chrome', 'http_server', 'java'). Case-insensitive."], 
     size: Annotated[Optional[int], "Maximum number of CPE results to return. If None, uses server default."] = None
-) -> CpeSearchResponse:
+) -> Any:
     """Find CPE strings by vendor+product (latest schema).
 
     Endpoint:
@@ -707,7 +719,7 @@ async def search_cpe(
     result = await client.search_cpe(
         vendor=vendor, product=product, size=size, headers=_forward_headers()
     )
-    # TODO: fix model to match actual response structure
+    # TODO(MR tool-contract): fixture-derived models
     return result
 
 
@@ -1204,3 +1216,49 @@ async def root(request: Request) -> HTMLResponse:
     with open("./vulners_mcp/mcp.html", "r", encoding="utf-8") as file:
         html_content = file.read()
     return HTMLResponse(content=html_content)
+
+
+# -------------------- Agent discovery documents --------------------
+# Served on the MCP subdomain (mcp.vulners.com) so agents and crawlers can
+# discover the server, its auth model, and its API. See vulners_mcp/discovery.py.
+
+
+@mcp.custom_route("/llms.txt", methods=["GET"])
+async def llms_txt(request: Request) -> PlainTextResponse:
+    return PlainTextResponse(
+        discovery.LLMS_TXT, media_type="text/plain; charset=utf-8"
+    )
+
+
+@mcp.custom_route("/auth.md", methods=["GET"])
+async def auth_md(request: Request) -> PlainTextResponse:
+    return PlainTextResponse(
+        discovery.AUTH_MD, media_type="text/markdown; charset=utf-8"
+    )
+
+
+@mcp.custom_route("/robots.txt", methods=["GET"])
+async def robots_txt(request: Request) -> PlainTextResponse:
+    return PlainTextResponse(
+        discovery.ROBOTS_TXT, media_type="text/plain; charset=utf-8"
+    )
+
+
+@mcp.custom_route("/.well-known/mcp/server-card.json", methods=["GET"])
+async def mcp_server_card(request: Request) -> JSONResponse:
+    # Read the version from the running FastMCP instance so the card always
+    # matches the serverInfo.version returned by the initialize handshake.
+    return JSONResponse(discovery.build_server_card(mcp.version))
+
+
+@mcp.custom_route("/.well-known/api-catalog", methods=["GET"])
+async def api_catalog(request: Request) -> JSONResponse:
+    return JSONResponse(
+        discovery.build_api_catalog(),
+        media_type="application/linkset+json",
+    )
+
+
+@mcp.custom_route("/.well-known/agents/index.json", methods=["GET"])
+async def agents_index(request: Request) -> JSONResponse:
+    return JSONResponse(discovery.build_agents_index())

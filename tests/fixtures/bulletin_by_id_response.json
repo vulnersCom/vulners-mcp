@@ -1,0 +1,14 @@
+{
+  "id": "CVE-2024-0001",
+  "title": "Example vulnerability used only by the test suite",
+  "type": "cve",
+  "bulletinFamily": "cve",
+  "cvss": {
+    "score": 9.8,
+    "severity": "Critical",
+    "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+  },
+  "published": "2024-01-01T00:00:00",
+  "modified": "2024-01-02T00:00:00",
+  "href": "https://vulners.com/cve/CVE-2024-0001"
+}
