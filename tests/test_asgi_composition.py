@@ -1,8 +1,8 @@
 """Tests for the ASGI composition factory (VU-1850 "auth gate" MR).
 
-``vulners_mcp.asgi.build_asgi_app`` is the seam a parallel A2A MR will use to
-mount its own routes (``/a2a``, ``/.well-known/agent-card.json``) alongside
-MCP without touching ``server.py``. Two things must hold for that to work:
+``vulners_mcp.asgi.build_asgi_app`` provides an ``extra_routes`` seam for
+mounting additional routes alongside MCP without touching ``server.py``.
+Two things must hold for that to work:
 
 1. ``extra_routes`` are matched before the catch-all ``Mount("/", app=mcp_app)``.
 2. The composed app reuses ``mcp_app.lifespan`` -- dropping this is exactly
@@ -33,8 +33,8 @@ from vulners_mcp.server import mcp
 from vulners_mcp.settings import settings
 
 
-async def _dummy_a2a_route(request):
-    return PlainTextResponse("a2a placeholder")
+async def _dummy_extra_route(request):
+    return PlainTextResponse("extra route placeholder")
 
 
 def test_default_app_serves_mcp_endpoint_with_lifespan_running() -> None:
@@ -69,13 +69,13 @@ def test_default_app_serves_mcp_endpoint_with_lifespan_running() -> None:
 def test_extra_routes_are_matched_before_the_mcp_catch_all_mount() -> None:
     fresh_mcp_app = mcp.http_app(path="/mcp", stateless_http=settings.mcp_stateless_http)
     composed = build_asgi_app(
-        extra_routes=[Route("/a2a", _dummy_a2a_route)], target_app=fresh_mcp_app
+        extra_routes=[Route("/extra", _dummy_extra_route)], target_app=fresh_mcp_app
     )
 
     with TestClient(composed) as client:
-        a2a_resp = client.get("/a2a")
-        assert a2a_resp.status_code == 200
-        assert a2a_resp.text == "a2a placeholder"
+        extra_resp = client.get("/extra")
+        assert extra_resp.status_code == 200
+        assert extra_resp.text == "extra route placeholder"
 
         # MCP's own routes are still reachable through the same composed app.
         health_resp = client.get("/health")

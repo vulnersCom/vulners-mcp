@@ -4,17 +4,16 @@
 This is what ``uvicorn`` actually serves for the hosted server (see
 ``vulners_mcp.__init__.main``) -- the previous version of this module was
 broken and was deleted; this rebuilds it deliberately as a small composition
-factory so a sibling MR can mount unrelated route groups (A2A) alongside MCP
-without either one reaching into the other's app object.
+factory with an ``extra_routes`` seam so unrelated route groups can be
+mounted alongside MCP, each without reaching into the other's app object.
 
 Route ownership (keep this list in sync as routes are added):
   - MCP owns "/mcp" (the Streamable HTTP JSON-RPC endpoint), "/health", "/"
     (the mcp.html landing page), and any future discovery documents
     registered as ``@mcp.custom_route(...)`` on the FastMCP instance in
     ``server.py``. All of these are served by ``mcp_app`` below.
-  - A2A (a parallel MR) will own "/a2a" and
-    "/.well-known/agent-card.json", injected via ``extra_routes`` below --
-    it must NOT touch ``mcp_app`` or ``server.py``.
+  - ``extra_routes`` is the seam for anything mounted alongside MCP without
+    touching ``mcp_app`` or ``server.py``. Nothing uses it at present.
 """
 
 from __future__ import annotations
@@ -52,8 +51,8 @@ def build_asgi_app(
     ``extra_routes`` are exact-path routes mounted BEFORE the catch-all
     ``Mount("/", app=mcp_app)``, so a route defined here always wins over
     anything ``mcp_app`` might otherwise answer for the same path. This is
-    the seam a parallel A2A MR is expected to use to inject its own routes
-    without modifying this module or ``server.py``.
+    the seam for injecting additional routes without modifying this module
+    or ``server.py``.
 
     ``target_app`` overrides which FastMCP HTTP app gets mounted; it exists
     for tests. ``mcp_app`` above is a module-level singleton, and its
