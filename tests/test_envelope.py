@@ -1,11 +1,23 @@
-"""Tests for unwrapping the Vulners ``{"result": "OK", "data": ...}`` envelope,
-and for the output-model declarations that used to lie about tool shapes.
+"""Tests for unwrapping the Vulners response envelope, and for the
+output-model declarations that used to lie about tool shapes.
 
-Vulners API responses are always shaped ``{"result": "OK", "data": {...}}``
-(or, per docs.vulners.com, sometimes ``data`` is a bare array rather than an
-object — see ``test_search_lucene_tolerates_array_shaped_upstream_payload``
-below). ``VulnersClient`` methods must return ``data`` on success and raise
-``ApiError`` otherwise.
+Vulners uses two different envelope shapes depending on API version:
+
+- v3 endpoints (``/api/v3/...``) are shaped ``{"result": "OK", "data": {...}}``
+  (or, per docs.vulners.com, sometimes ``data`` is a bare array rather than an
+  object — see ``test_search_lucene_tolerates_array_shaped_upstream_payload``
+  below). On success, ``VulnersClient`` methods must return ``data``.
+- v4 endpoints (``/api/v4/...``) put the payload directly in ``result`` with
+  no ``"OK"``/``data`` wrapper (see ``test_unwrap_v4_dict``,
+  ``test_unwrap_v4_list``, ``test_unwrap_v4_cpe`` below — this is the
+  regression guard for the prod incident where 3 of 7 tools
+  (``audit_linux_packages``, ``audit_software``, ``search_cpe``) were dead
+  because ``_unwrap`` only recognized the v3 shape and treated every v4
+  ``result`` as a rejected request). On success, ``VulnersClient`` methods
+  must return ``result`` itself.
+
+Either way, a genuine error (a non-container, non-"OK" ``result``, or an HTTP
+error status) must still raise ``ApiError``.
 """
 
 from __future__ import annotations
@@ -17,14 +29,25 @@ import pytest
 
 from vulners_mcp.vulners_client import ApiError, VulnersClient
 
-# Tools whose declared pydantic output model didn't match the real Vulners
-# response shape (flagged by "# TODO: fix model to match actual response
-# structure" before this MR). Their MCP tool definitions must not advertise a
-# strict object output schema any more -- see server.py's `-> Any` return
+# Tools whose declared output type didn't match the real Vulners response
+# shape (flagged by "# TODO: fix model to match actual response structure"
+# before this MR). Their MCP tool definitions must not advertise a strict
+# object output schema any more -- see server.py's `-> Any` return
 # annotations and the "# TODO(MR tool-contract)" markers.
+#
+# ``audit_software`` joined this set as part of the VU-1850/VU-1946 hotfix:
+# its declared return type was `Dict[str, Any]`, but the real
+# ``/api/v4/audit/software`` payload is a bare list (one entry per input
+# software item) -- previously masked by the v3/v4 envelope bug (every call
+# raised ApiError before the response shape even mattered), it surfaced as
+# soon as that bug was fixed: FastMCP raised
+# ``ValueError: structured_content must be a dict or None. Got list: [...]``
+# for every real (list-shaped) response, exactly like the pre-existing
+# ``search_lucene`` array-payload case below.
 FORMERLY_MISDECLARED_TOOLS = {
     "search_lucene",
     "audit_linux_packages",
+    "audit_software",
     "query_autocomplete",
     "search_cpe",
 }
@@ -34,6 +57,99 @@ async def _client() -> VulnersClient:
     client = VulnersClient()
     await client.start()
     return client
+
+
+async def test_unwrap_v3_ok(vulners_api) -> None:
+    """v3 envelope: ``result == "OK"`` -> return ``data``."""
+    vulners_api.get("/api/v3/audit/getSupportedOS").mock(
+        return_value=httpx.Response(
+            200, json={"result": "OK", "data": {"ubuntu": ["22.04"]}}
+        )
+    )
+    client = await _client()
+    try:
+        result = await client.get_supported_os()
+    finally:
+        await client.close()
+
+    assert result == {"ubuntu": ["22.04"]}
+
+
+async def test_unwrap_v4_dict(vulners_api, load_fixture) -> None:
+    """v4 envelope (dict payload): ``/api/v4/audit/linux`` real recorded shape.
+
+    Real upstream response is ``{"result": {"issues": [...], "errors": {},
+    "totalPackages": N}}`` -- no ``"OK"``/``data`` wrapper. Before the fix,
+    ``_unwrap`` treated the dict ``result`` as a rejected request and raised
+    ApiError on every call; it must now return the dict payload.
+    """
+    body = load_fixture("audit_linux_v4.json")
+    vulners_api.post("/api/v4/audit/linux").mock(
+        return_value=httpx.Response(200, json=body)
+    )
+    client = await _client()
+    try:
+        result = await client.audit_linux_packages({"os_name": "ubuntu", "os_version": "22.04", "packages": ["openssl 3.0.2 amd64"]})
+    finally:
+        await client.close()
+
+    assert result == body["result"]
+    assert result["totalPackages"] == 1
+    assert result["issues"][0]["package"] == "openssl 3.0.2 amd64"
+
+
+async def test_unwrap_v4_list(vulners_api, load_fixture) -> None:
+    """v4 envelope (list payload): ``/api/v4/audit/software`` real recorded shape.
+
+    Real upstream response is ``{"result": [{"input": ..., "vulnerabilities":
+    [...]}]}`` -- the list itself is the payload, not an error.
+    """
+    body = load_fixture("audit_software_v4.json")
+    vulners_api.post("/api/v4/audit/software").mock(
+        return_value=httpx.Response(200, json=body)
+    )
+    client = await _client()
+    try:
+        result = await client.audit_software({"software": [{"part": "a", "vendor": "openssl", "product": "openssl", "version": "1.0.1g"}]})
+    finally:
+        await client.close()
+
+    assert result == body["result"]
+    assert isinstance(result, list)
+    assert result[0]["input"]["vendor"] == "openssl"
+    assert len(result[0]["vulnerabilities"]) > 0
+
+
+async def test_unwrap_v4_cpe(vulners_api, load_fixture) -> None:
+    """v4 envelope (dict payload): ``/api/v4/search/cpe`` real recorded shape."""
+    body = load_fixture("search_cpe_v4.json")
+    vulners_api.get("/api/v4/search/cpe").mock(
+        return_value=httpx.Response(200, json=body)
+    )
+    client = await _client()
+    try:
+        result = await client.search_cpe(vendor="openssl", product="openssl")
+    finally:
+        await client.close()
+
+    assert result == body["result"]
+    assert result["best_match"] == "cpe:2.3:a:openssl:openssl:*:*:*:*:*:*:*:*"
+    assert len(result["cpe"]) > 0
+
+
+async def test_unwrap_v4_genuine_error_still_raises(vulners_api) -> None:
+    """A genuine v4 error (result is a plain error string, not a container) still raises."""
+    vulners_api.post("/api/v4/audit/linux").mock(
+        return_value=httpx.Response(200, json={"result": "bad request"})
+    )
+    client = await _client()
+    try:
+        with pytest.raises(ApiError) as excinfo:
+            await client.audit_linux_packages({"os_name": "ubuntu", "os_version": "22.04", "packages": []})
+    finally:
+        await client.close()
+
+    assert excinfo.value.status == 200
 
 
 async def test_ok_envelope_unwraps_to_data(vulners_api) -> None:

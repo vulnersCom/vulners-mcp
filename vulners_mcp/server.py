@@ -12,6 +12,50 @@ from . import discovery
 from .auth import AuthMiddleware, resolve_effective_auth
 from .vulners_client import VulnersClient
 
+# Curated default field projection for `bulletin_by_id`. Deliberately
+# excludes `references` (opt-in via the `references` tool param) and the
+# heaviest catch-all content. Fetching fields=["*"] with references=True for
+# a single, heavily-referenced CVE (e.g. CVE-2021-44228 / Log4Shell) returns
+# ~113 MiB -- ~1180x larger than this curated projection (~98 KiB for the
+# same CVE) -- and has been observed to break real MCP client sessions. See
+# VU-1850/VU-1946.
+DEFAULT_BULLETIN_FIELDS = [
+    "id",
+    "title",
+    "description",
+    "type",
+    "href",
+    "published",
+    "modified",
+    "cvss",
+    "cvss2",
+    "cvss3",
+    "epss",
+    "cvelist",
+    "enchantments",
+    "bulletinFamily",
+]
+
+# Curated default hit projection for `search_lucene`. Discovery-phase search
+# results don't need the full bulletin body per hit -- callers that want
+# more detail on a specific hit should follow up with `bulletin_by_id`.
+DEFAULT_LUCENE_FIELDS = [
+    "id",
+    "title",
+    "type",
+    "cvss",
+    "cvss3",
+    "epss",
+    "published",
+    "href",
+    "cvelist",
+]
+
+# Hard upper bound on `search_lucene`'s `size` argument, applied to every
+# caller (not just the anon tier -- see `auth.clamp_anon_args` for the
+# separate, anon-tier-only clamp applied earlier in the request pipeline).
+MAX_LUCENE_SIZE = 100
+
 # -------------------- FastMCP server config --------------------
 from vulners_mcp._version import __version__  # noqa: E402  (local: avoid import-block churn)
 
@@ -98,7 +142,9 @@ async def _get_client() -> VulnersClient:
     description="🚨 PRIMARY TOOL FOR KNOWN IDs 🚨 Fetch full bulletin by CVE or Vulners ID. Use this when you have a specific identifier like CVE-2024-1234, RHSA-2024:001, CTX694938, etc. Supports single ID or list of IDs. When list is provided, references are automatically set to False. NEVER use search_lucene for known IDs."
 )
 async def bulletin_by_id(
-    id: Annotated[Union[str, List[str]], "Single CVE ID, Vulners ID, or bulletin ID to fetch, or a list of IDs. Supports CVE identifiers (CVE-2024-21762), vendor-specific IDs (RHSA-2024:1234), or Vulners internal IDs. When a list is provided, references are automatically set to False."],
+    id: Annotated[Union[str, List[str]], "Single CVE ID, Vulners ID, or bulletin ID to fetch, or a list of IDs. Supports CVE identifiers (CVE-2024-21762), vendor-specific IDs (RHSA-2024:1234), or Vulners internal IDs. When a list is provided, references are always False regardless of the `references` argument."],
+    references: Annotated[bool, "Include the full reference graph (linked advisories, patches, related bulletins) for a SINGLE-ID lookup. Defaults to False: the curated field projection already covers the essentials (CVSS/CVSS2/CVSS3, EPSS, AI enchantments, CVE list). Set True only when you need the reference graph and can accept a much larger response -- for heavily-referenced CVEs this can inflate the payload from ~100 KiB to 100+ MiB. Ignored (always False) when `id` is a list."] = False,
+    fields: Annotated[Optional[List[str]], "Override the default curated field projection. Pass ['*'] to request every field Vulners has for the bulletin (can be very large for popular CVEs). If omitted, a curated default is used: id, title, description, type, href, published, modified, cvss, cvss2, cvss3, epss, cvelist, enchantments, bulletinFamily."] = None,
 ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
     """🚨 PRIMARY TOOL FOR KNOWN IDs 🚨
     Fetch full bulletin by CVE or Vulners ID.
@@ -142,17 +188,19 @@ async def bulletin_by_id(
     - Batch processing: Pass multiple IDs as a list for efficient bulk retrieval
     - Multiple CVEs: Use a list of IDs for batch processing instead of multiple calls
 
-    **Returned data includes:**
+    **Returned data includes (default curated projection):**
     - Basic information: ID, title, description, type, bulletin family
-    - Scoring: CVSS base score, EPSS score, AI score, SSVC score
-    - Affected systems: Software names, version ranges, package details
-    - Dates: Published, modified, discovered timestamps
-    - References: URLs to patches, advisories, vendor statements, related CVEs
-    - Exploitation: Known exploits, PoCs, wild exploitation status
-    - AI analysis: Vulners AI score, risk assessment, contextual information
+    - Scoring: CVSS (v2/v3) base score, EPSS score
+    - Dates: Published, modified
+    - Linked CVEs: `cvelist`
+    - AI analysis and exploitation evidence: `enchantments` (AI score, tags, exploitation status, social mentions, dependency/reference type index)
+
+    **Additional data available via opt-in (`references=true` and/or `fields=["*"]`):**
+    - Full reference graph: URLs to patches, advisories, vendor statements, related CVEs
+    - Affected systems: Software names, version ranges, package details (`cnaAffected`, `affectedSoftware`)
     - Weakness classification: CWE classifications
-    - Social mentions: Twitter and Reddit mentions
-    - Related bulletins: Connected CVEs, advisories, and security notices
+    - Every other field Vulners has for the bulletin
+    Note: for heavily-referenced CVEs, the full graph can be 100+ MiB -- request it only when you actually need it.
 
     **🚨 TOOL SELECTION RULES FOR MODELS 🚨**
     
@@ -170,8 +218,8 @@ async def bulletin_by_id(
     - ❌ User asks "What vulnerabilities exist in Chrome?" (use search_lucene)
     
     **EFFICIENCY RULES:**
-    - Single IDs: Always fetches with `references=true` and all fields to provide rich context (advisories, patches, related records)
-    - Multiple IDs: When a list is provided, automatically sets `references=false` for efficient batch processing
+    - Single IDs: Fetches a curated field projection by default (id, title, description, type, href, published, modified, cvss, cvss2, cvss3, epss, cvelist, enchantments, bulletinFamily), with `references=false`. Pass `references=true` and/or `fields=["*"]` only when you need the full reference graph or every field -- for heavily-referenced CVEs this can be 100+ MiB.
+    - Multiple IDs: When a list is provided, `references` is always False for efficient batch processing (the `references` argument is ignored). The same curated field projection applies unless overridden with `fields`.
     - For multiple CVEs: Pass as a list for batch processing instead of multiple calls
     - Discovery vs. retrieval: Use `search_lucene` only for discovery when identifiers are unknown. Once IDs are known, prefer `bulletin_by_id` for retrieval
     Endpoint:
@@ -180,46 +228,47 @@ async def bulletin_by_id(
     Auth:
       X-Api-Key: <key>
 
-    Request body (single ID):
+    Request body (single ID, default projection):
       {
         "id": "CVE-2024-3094",
-        "fields": ["*"],
-        "references": true
+        "fields": ["id", "title", "description", "type", "href", "published", "modified", "cvss", "cvss2", "cvss3", "epss", "cvelist", "enchantments", "bulletinFamily"],
+        "references": false
       }
 
-    Request body (multiple IDs):
+    Request body (multiple IDs, default projection):
       {
         "id": ["CVE-2024-3094", "CVE-2025-7775"],
-        "fields": ["*"],
+        "fields": ["id", "title", "description", "type", "href", "published", "modified", "cvss", "cvss2", "cvss3", "epss", "cvelist", "enchantments", "bulletinFamily"],
         "references": false
       }
 
     Examples:
-      Single ID: { "id": "CVE-2024-3094", "fields": ["*"], "references": true }
-      Multiple IDs: { "id": ["CVE-2024-3094", "CVE-2025-7775"], "fields": ["*"], "references": false }
+      Single ID (default projection): { "id": "CVE-2024-3094", "references": false }
+      Single ID, full reference graph: { "id": "CVE-2024-3094", "references": true, "fields": ["*"] }
+      Multiple IDs: { "id": ["CVE-2024-3094", "CVE-2025-7775"], "references": false }
 
     Returns:
       Single ID: JSON bulletin object with complete vulnerability details.
       Multiple IDs: JSON array of bulletin objects with vulnerability details.
     """
     client = await _get_client()
-    
-    # Check if id is a list
+
+    body_fields = fields if fields is not None else DEFAULT_BULLETIN_FIELDS
     if isinstance(id, list):
-        # For lists, references must be False
+        # Lists always force references=False, regardless of the `references`
+        # argument -- batch lookups stay efficient.
         body = {
             "id": id,
             "references": False,
-            "fields": ["*"]
+            "fields": body_fields,
         }
     else:
-        # For single ID, use references=True and all fields
         body = {
             "id": id,
-            "references": True,
-            "fields": ["*"]
+            "references": references,
+            "fields": body_fields,
         }
-    
+
     return await client.search_by_id(body, headers=_forward_headers())
 
 
@@ -228,9 +277,10 @@ async def bulletin_by_id(
     description="🔍 DISCOVERY TOOL FOR UNKNOWN VULNERABILITIES 🔍 Full-text search in Vulners Knowledge Base using Lucene syntax. Use ONLY when you don't have specific IDs or version information. NEVER use for known CVE/bulletin IDs - use bulletin_by_id instead. NEVER use for specific software versions (e.g., 'Chrome 138.0.7204.184') - use audit_software instead. 🚨 CRITICAL: For vendor/product searches, ALWAYS use cnaAffected.vendor and cnaAffected.product fields - the affectedSoftware field does NOT exist."
 )
 async def search_lucene(
-    query: Annotated[str, "Lucene query string for searching vulnerabilities. Supports Boolean operators (AND, OR, NOT), field-specific queries, range searches, and wildcard matching. NEVER use for specific software versions - use audit_software instead. For vendor/product searches use cnaAffected.vendor and cnaAffected.product (NOT affectedSoftware which does not exist)."], 
-    skip: Annotated[int, "Number of results to skip for pagination. Default is 0."] = 0, 
-    size: Annotated[int, "Maximum number of results to return. Default is 20."] = 20
+    query: Annotated[str, "Lucene query string for searching vulnerabilities. Supports Boolean operators (AND, OR, NOT), field-specific queries, range searches, and wildcard matching. NEVER use for specific software versions - use audit_software instead. For vendor/product searches use cnaAffected.vendor and cnaAffected.product (NOT affectedSoftware which does not exist)."],
+    skip: Annotated[int, "Number of results to skip for pagination. Default is 0."] = 0,
+    size: Annotated[int, f"Maximum number of results to return. Default is 20, hard-capped at {MAX_LUCENE_SIZE} regardless of caller."] = 20,
+    fields: Annotated[Optional[List[str]], "Override the default curated per-hit field projection. Pass ['*'] for every field per hit (large responses). If omitted, a curated default is used: id, title, type, cvss, cvss3, epss, published, href, cvelist."] = None,
 ) -> Any:
     """🔍 DISCOVERY TOOL FOR UNKNOWN VULNERABILITIES 🔍
     Full-text search in Vulners Knowledge Base.
@@ -293,12 +343,9 @@ async def search_lucene(
     - By publication date: order:published
     - By bounty amount: order:bounty
 
-    **Returned Fields (all fields are automatically included):**
-    - id, title, description, short_description
-    - type, bulletinFamily, cvss, published, modified
-    - cnaAffected.vendor, cnaAffected.product, affectedPackage, cvelist
-    - enchantments (AI scores, exploitation status)
-    - And all other available fields for comprehensive vulnerability data
+    **Returned Fields (curated default projection per hit):**
+    - id, title, type, cvss, cvss3, epss, published, href, cvelist
+    - Pass `fields=[...]` (or `fields=["*"]` for everything) to widen the projection when you need more per-hit detail. For deep detail on a specific hit, prefer following up with `bulletin_by_id` instead of widening every hit here.
     
     **Key Date Field:**
     - `published` - Primary field for date-based filtering and sorting (e.g., `published:[2024-01-01 TO 2024-12-31]`, `published:[now-30d TO now]`, `order:published`)
@@ -352,11 +399,11 @@ async def search_lucene(
 
     Caller guidance:
     - If you already have an exact identifier (single CVE or bulletin ID), call `bulletin_by_id` instead of running a Lucene search.
-    - When `bulletin_by_id` is called with exactly one ID, it should be treated as self-sufficient (no follow-up `search_lucene` call is needed) because rich context is returned via `references=true` by default for single-ID lookups.
+    - When `bulletin_by_id` is called with exactly one ID, treat it as self-sufficient for a first pass (no follow-up `search_lucene` call is needed); pass `references=true` to `bulletin_by_id` if you specifically need the linked-advisory graph.
     - If you have specific software version information (e.g., "Chrome 138.0.7204.184"), call `audit_software` instead of running a Lucene search.
     - For CVSS-based prioritization or filtering, use the generic field `cvss.score` in queries (e.g., `cvss.score:[8 TO 10]`, `order:cvss.score`).
     - For date-based filtering and sorting, always use the `published` field (e.g., `published:[2024-01-01 TO 2024-12-31]`, `order:published`, `published:last 30 days`).
-    - All fields are automatically returned for comprehensive vulnerability data analysis.
+    - Each hit returns a curated field projection by default; pass `fields=[...]` to widen it.
 
     Endpoint:
       POST /api/v3/search/lucene
@@ -370,7 +417,8 @@ async def search_lucene(
       {
         "query": "<lucene query>",
         "skip": 0,                       # optional
-        "size": 20                       # optional (default is 20, server max is 10000 but we recommend keeping it at 20 or max 50)
+        "size": 20,                      # optional (default 20, hard-capped at 100 by this tool regardless of what's passed)
+        "fields": ["id", "title", "type", "cvss", "cvss3", "epss", "published", "href", "cvelist"]  # curated default; override with `fields`
       }
 
     Example:
@@ -383,8 +431,13 @@ async def search_lucene(
       JSON with "total", "results" (array of bulletins), and pagination info.
     """
     client = await _get_client()
-    # Always request all fields for comprehensive vulnerability data
-    body = {"query": query, "skip": skip, "size": size, "fields": ["*"]}
+    clamped_size = min(size, MAX_LUCENE_SIZE) if isinstance(size, int) else size
+    body = {
+        "query": query,
+        "skip": skip,
+        "size": clamped_size,
+        "fields": fields if fields is not None else DEFAULT_LUCENE_FIELDS,
+    }
     result = await client.search_lucene(body, headers=_forward_headers())
     # TODO(MR tool-contract): fixture-derived models
     return result
@@ -396,7 +449,7 @@ async def search_lucene(
 )
 async def audit_software(
     body: Annotated[Dict[str, Any], "Request body containing software list and audit parameters. Should include 'software' array with structured CPE objects (NOT CPE strings) and optional 'match' parameter ('partial' or 'full'). Each CPE object must have fields: part, vendor, product, version, update, edition, language, platform, target_sw, target_hw, other. USE THIS for specific software versions like 'Chrome 138.0.7204.184'."]
-) -> Dict[str, Any]:
+) -> Any:
     """🔍 VERSION-SPECIFIC SOFTWARE AUDIT 🔍
     Audit specific software versions for known vulnerabilities.
     This tool is specifically designed for auditing software when you have exact version information.
@@ -560,7 +613,9 @@ async def audit_software(
         "cvelistMetrics"
     ]
     
-    return await client.audit_software(body, headers=_forward_headers())
+    result = await client.audit_software(body, headers=_forward_headers())
+    # TODO(MR tool-contract): fixture-derived models
+    return result
 
 
 @mcp.tool(
@@ -600,36 +655,40 @@ async def get_supported_os() -> Dict[str, Any]:
 async def audit_linux_packages(
     os: Annotated[str, "Linux distribution identifier (e.g., ubuntu, debian, centos, rhel, fedora). Use get_supported_os() to see available options."], 
     version: Annotated[str, "Distribution version/release (e.g., 22.04, 12, 8, 40). Must match a supported version for the specified OS."], 
-    package: Annotated[List[str], "List of package names with versions (e.g., ['openssl-3.0.2', 'curl-7.81.0-1ubuntu1.14']). Format: 'name-version' or 'name-version-release'."], 
+    package: Annotated[List[str], "Installed packages, each formatted EXACTLY as the target OS's own package manager lists them -- i.e. one line of the output produced by the command get_supported_os() returns for this OS. DEB-based distros (ubuntu, debian, astra, linuxmint, ...): space-separated 'name version arch', e.g. 'openssl 3.0.2-0ubuntu1.6 amd64'. RPM-based distros (rhel, centos, oracle, almalinux, rocky, fedora, amazon, suse, ...): 'name-version-release.arch', e.g. 'openssl-1.0.2k-25.el7_9.x86_64'. The bare hyphenated 'name-version' short form is NOT accepted -- the API rejects it as 'Invalid package'."],
     include_candidates: Annotated[Optional[bool], "Whether to include potential matches in results. If None, uses default behavior (typically false)."] = None
 ) -> Any:
     """Linux package audit (RPM/DEB) for a given distro + version.
 
     Endpoint:
-      POST /api/v3/audit/audit
+      POST /api/v4/audit/linux
 
     Auth:
       X-Api-Key: <key>
 
-    Request body:
+    Request body (upstream field names -- note these differ from this tool's
+    own parameter names: `os`/`version`/`package` here map to
+    `os_name`/`os_version`/`packages` on the wire):
       {
-        "os": "<distro-id>",                 # e.g. "ubuntu", "debian", "centos", "rhel"
-        "version": "<release>",              # e.g. "22.04", "12", "8"
-        "package": ["pkg-ver" | "name-ver-rel", ...],
+        "os_name": "<distro-id>",            # e.g. "ubuntu", "debian", "centos", "rhel"
+        "os_version": "<release>",           # e.g. "22.04", "12", "8"
+        "packages": ["name version arch" (deb) | "name-version-release.arch" (rpm), ...],
+        "cvelist_metrics": true,             # always sent by this tool, for CVSS/EPSS/exploitation data per advisory
         "include_candidates": false          # optional; include potential matches
       }
 
     Example:
       {
-        "os": "ubuntu",
-        "version": "22.04",
-        "package": ["openssl 3.0.2 amd64", "curl 7.81.0-1ubuntu1.14 amd64"],
-        "include_candidates": false
+        "os_name": "ubuntu",
+        "os_version": "22.04",
+        "packages": ["openssl 3.0.2 amd64", "curl 7.81.0-1ubuntu1.14 amd64"],
+        "cvelist_metrics": true
       }
 
     Returns:
-      JSON describing vulnerable packages, fixed versions (if available),
-      and linked advisories. Use get_supported_os() to discover valid OS ids.
+      JSON shaped ``{"issues": [...], "errors": {...}, "totalPackages": N}``,
+      describing vulnerable packages, fixed versions (if available), and
+      linked advisories. Use get_supported_os() to discover valid OS ids.
 
     **📋 FOLLOW-UP ACTIONS FOR DETAILED ANALYSIS:**
     
@@ -1091,8 +1150,8 @@ def vulners_searchin_strategies_cheatsheet_resource() -> str:
     **🚨 CRITICAL: When the user hands you a precise identifier—think CVE-2025-30369, MS24-045, RHSA-2025:1949, PACKETSTORM:178745—you MUST use bulletin_by_id, NEVER search_lucene. This is MANDATORY.**
 
     Bulletin retrieval rules:
-    • Single ID: treat as self-contained detail lookup. Always fetches with references=true and all fields so the payload includes advisories, patches and related context. Do not run search_lucene as a follow-up unless explicitly broadening scope.
-    • Multiple IDs: pass as a list to bulletin_by_id for batch processing. Automatically sets references=false for efficiency while still providing comprehensive vulnerability details.
+    • Single ID: treat as self-contained detail lookup. Fetches a curated field projection by default (references=false) -- pass references=true if you specifically need the advisories/patches/related-bulletin graph, which can be very large for popular CVEs. Do not run search_lucene as a follow-up unless explicitly broadening scope.
+    • Multiple IDs: pass as a list to bulletin_by_id for batch processing. Always uses references=false for efficiency while still providing the curated field projection.
     
     For any query that spans more than seven days (your internal litmus test for "potentially huge"), immediately switch to explicit pagination: default to size: 10, look at the response's total, and keep bumping skip in chunks of 10 (skip=10, skip=20, …) until you've hoovered up every record. Should any page request fail, or if circumstances prevent you from fetching all pages referenced by total, you must stop, tell the user the harvest is incomplete, and refuse to draw conclusions from partial data.  I  If the API coughs up a non-200 or says result!=OK, tell the user what went sideways and, with a sigh, suggest a saner query.
     
@@ -1114,27 +1173,21 @@ def vulners_searchin_strategies_cheatsheet_resource() -> str:
     4. Get full vulnerability details, CVSS scores, patches, and exploitation status
     
     **Data Retrieval Policy:**
-    
-    The search_lucene tool automatically retrieves ALL fields (fields:["*"]) for comprehensive vulnerability data analysis. This ensures you always have complete information including:
-    - Core identifiers (id, title, description, type)
-    - Scoring data (cvss, epss, enchantments.score)
-    - Affected software (cnaAffected.vendor, cnaAffected.product, affectedPackage)
-    - Temporal data (published, modified, timestamps)
-    - Exploitation evidence (enchantments.exploitation, bulletinFamily)
-    - References and related documents (cvelist, references, sourceData)
-    
+
+    The search_lucene tool returns a curated per-hit field projection by default (id, title, type, cvss, cvss3, epss, published, href, cvelist) -- enough for triage and ranking. Pass `fields=[...]` (or `fields=["*"]` for everything) when a hit needs deeper inspection, but prefer following up with bulletin_by_id on the specific ID(s) that matter instead of widening every hit.
+
     CVSS guidance:
     - For CVSS-based ranking/filtering in Lucene, always use `cvss.score` (e.g., `cvss.score:[8 TO 10]`, `order:cvss.score`).
-    - All CVSS data is automatically included in results for analysis.
-    
+    - CVSS data is included in the default per-hit projection.
+
     Date filtering guidance:
     - Always use the `published` field for date-based filtering and sorting.
       • Absolute range: `published:[2024-01-01 TO 2024-12-31]`
       • Relative ranges: `published:[now-1d TO now]`, `published:[now-7d TO now]`, `published:[now-30d TO now]`, `published:[now-1M TO now]`, `published:[now-1y TO now]`
       • Sorting: `order:published`
     - The `published` field is the primary date field - avoid using other timestamp fields for date-based queries.
-    
-    For exploits, "description" and "sourceData" fields are automatically included for content analysis.
+
+    For exploit content analysis, fetch the specific bulletin with bulletin_by_id (references=true if you need the linked graph) rather than widening every search_lucene hit.
     
     Never invent field names-stick to those blessed in the official database_fields page.
     
@@ -1180,7 +1233,7 @@ def vulners_searchin_strategies_cheatsheet_resource() -> str:
     
     If it already equals , skip the treasure hunt and **dump the ** verbatim to the user - raw text, no syntax-highlighting, no clever truncation; the whole payload is the point.
     
-    Otherwise (no exploit reference yet) first ensure you used bulletin_by_id (which automatically includes references=true and all fields); then, if needed, fire off a query for <CVE-ID> AND bulletinFamily:exploit. If that too returns zilch, widen the net with product-and-keywords plus the same exploit filter.
+    Otherwise (no exploit reference yet) first ensure you used bulletin_by_id (passing references=true and fields=["*"] to get the full advisory/exploit graph); then, if needed, fire off a query for <CVE-ID> AND bulletinFamily:exploit. If that too returns zilch, widen the net with product-and-keywords plus the same exploit filter.
     
     When an exploit finally surfaces, retrieve it with bulletin_by_id and once again disgorge the unedited sourceData.  The only acceptable pruning is to lop off ASCII art banners or marketing fluff that precedes the actual code.
     

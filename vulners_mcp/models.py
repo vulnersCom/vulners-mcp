@@ -138,13 +138,6 @@ class WindowsWinAuditRequest(BaseModel):
     platform: str | None = None
 
 
-class LinuxPackageAuditRequest(BaseModel):
-    os: str
-    version: str
-    package: list[str]
-    include_candidates: bool | None = None
-
-
 # ---- Basics / Collections ----
 class AutocompleteRequest(BaseModel):
     query: str
