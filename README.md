@@ -62,7 +62,6 @@ How you provide your API key depends on which transport you run:
 
 ### Anonymous tier (HTTP only)
 
-The hosted server never holds or falls back to a shared, privileged API key.
 `initialize` and `tools/list` always work without a key, so an agent can
 discover what the server offers before it has one. A `tools/call` sent
 without an `X-Api-Key` header behaves according to whether this deployment
@@ -70,7 +69,7 @@ has an anonymous tier configured:
 
 | Caller | tools/call behavior |
 |---|---|
-| No `X-Api-Key`, anonymous tier configured | **Allowed.** Forwarded on this deployment's dedicated, low-privilege anonymous-tier key. Any `size`-style argument is clamped to a small maximum, and anonymous calls share a modest app-level rate limit. If that upstream key hits its own quota/rate limit, you get a structured error pointing you at sending your own key. |
+| No `X-Api-Key`, anonymous tier configured | **Allowed.** Forwarded on this deployment's anonymous-tier key. Any `size`-style argument is clamped to a small maximum, and anonymous calls share a modest app-level rate limit. If that upstream key hits its own quota/rate limit, you get a structured error pointing you at sending your own key. |
 | No `X-Api-Key`, anonymous tier NOT configured | Fails immediately with a structured guidance error (see below) -- nothing is sent upstream. |
 | `X-Api-Key` present, but Vulners rejects it (401/403) | Sanitized error. The server **never** silently falls back to the anonymous-tier key on your behalf. |
 | `X-Api-Key` present and valid | Forwarded verbatim, full limits, no clamp, no app-level rate limit. |
@@ -91,13 +90,13 @@ Sending your own `X-Api-Key` always gets you full, uncapped (at this layer)
 access -- the anonymous tier exists so an agent can try the server out, or
 make a light, occasional call, without first obtaining a key.
 
-If you run your own HTTP-mode server (self-hosted, Docker), setting
-`VULNERS_API_KEY` in its environment has no effect: it is ignored (with a
-startup warning) outside of stdio mode -- that variable only ever matters
-for a **stdio** server. To offer the anonymous tier on your own deployment,
-set `VULNERS_MCP_ANON_API_KEY` to a **dedicated, low-privilege** Vulners key
--- never reuse a privileged/operator key for this, since it is spent on
-behalf of anyone who calls your server without a key of their own.
+**No env change is required to enable the anonymous tier on a deployment
+that already sets `VULNERS_API_KEY`.** In HTTP mode, `VULNERS_MCP_ANON_API_KEY`
+falls back to `VULNERS_API_KEY` when unset -- so that same key now also backs
+the (rate-limited, size-clamped) anonymous tier. To back the anonymous tier
+with a *separate*, dedicated key instead -- so it isn't also your own
+operator key -- set `VULNERS_MCP_ANON_API_KEY` explicitly; it always takes
+precedence over the `VULNERS_API_KEY` fallback when both are set.
 
 ---
 
@@ -223,8 +222,8 @@ poetry run python -m vulners_mcp
 
 | Variable                       | Type    | Default               | Description                                               |
 |--------------------------------|---------|-----------------------|-----------------------------------------------------------|
-| `VULNERS_API_KEY`              | string  | *unset*               | **stdio transport only.** The local operator's own Vulners API key (see [Authentication](#authentication)). Ignored -- with a startup warning -- outside of stdio mode; the HTTP transport never uses a server-side key. |
-| `VULNERS_MCP_ANON_API_KEY`     | string  | *unset*                | **HTTP transport only.** A DEDICATED, low-privilege Vulners API key backing the anonymous tier -- callers who send no `X-Api-Key` get forwarded on this key instead of being rejected (see [Anonymous tier](#anonymous-tier-http-only)). Unset means no anonymous tier: a keyless `tools/call` gets the guidance error. Never reuse a privileged key here. |
+| `VULNERS_API_KEY`              | string  | *unset*               | **stdio transport:** the local operator's own Vulners API key (see [Authentication](#authentication)). **HTTP transport:** also backs the anonymous tier when `VULNERS_MCP_ANON_API_KEY` is unset -- no env change required to enable the anonymous tier on a deployment that already sets this. |
+| `VULNERS_MCP_ANON_API_KEY`     | string  | *unset*                | **HTTP transport only.** A Vulners API key backing the anonymous tier -- callers who send no `X-Api-Key` get forwarded on this key instead of being rejected (see [Anonymous tier](#anonymous-tier-http-only)). Takes precedence over the `VULNERS_API_KEY` fallback when set. If neither is set, there is no anonymous tier: a keyless `tools/call` gets the guidance error. |
 | `ANON_MAX_SIZE`                | integer | `10`                  | HTTP mode, anonymous tier only. Any top-level integer `size` tool argument is clamped to this value for anonymous-tier calls. Keyed calls are never clamped. |
 | `VULNERS_BASE_URL`             | string  | `https://vulners.com` | Base URL for the Vulners API (without /api suffix)        |
 | `MCP_TRANSPORT_MODE`           | string  | `stdio`               | Force transport mode: `http` or `streamable-http`         |

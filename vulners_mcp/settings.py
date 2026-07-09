@@ -4,7 +4,7 @@ import logging
 import os
 
 from fastmcp.server.server import Transport
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
 
 logger = logging.getLogger(__name__)
@@ -19,17 +19,24 @@ logger = logging.getLogger(__name__)
 # narrower meaning: it is the local operator's own key, used ONLY by the
 # stdio transport (Claude Desktop / a locally-run server), where there is no
 # per-request HTTP header to carry a caller's key. On the HTTP transport it
-# is never consulted -- see ``server._forward_headers`` and
-# ``auth.AuthMiddleware``, both of which key off the live request via
-# ``http_context.is_http_request()``, not this setting.
+# is never consulted for a *caller's own* request -- see
+# ``server._forward_headers`` and ``auth.AuthMiddleware``, both of which key
+# off the live request via ``http_context.is_http_request()``, not this
+# setting.
 #
 # ``VULNERS_MCP_ANON_API_KEY`` (VU-1850 "anonymous tier" MR) is the HTTP
-# transport's equivalent for a caller who sends no key at all: a DEDICATED,
-# low-privilege Vulners key configured on the hosted deployment, distinct
-# from any operator's own key. Unlike the old server-side fallback this
-# replaces, it is: (a) never the same key as a human operator's, (b) subject
-# to a size clamp and an app-level rate limit (see ``anon_max_size`` /
-# ``mcp_rate_limit_rps`` below), and (c) never substituted for a caller key
+# transport's equivalent for a caller who sends no key at all. Since VU-1850
+# "discovery truth" it is no longer a second env var a hosted deployment
+# *must* set to offer that tier: ``anon_api_key`` below falls back to
+# ``VULNERS_API_KEY`` when ``VULNERS_MCP_ANON_API_KEY`` is unset, so an
+# existing deployment's operator key keeps working, unchanged, as the
+# anonymous tier's key -- no env change required. Set
+# ``VULNERS_MCP_ANON_API_KEY`` explicitly only to back the anonymous tier
+# with a *separate*, dedicated key instead of reusing the operator one; it
+# always takes precedence over the ``VULNERS_API_KEY`` fallback when set.
+# Whichever key ends up backing the tier, it is still: (a) subject to a size
+# clamp and an app-level rate limit (see ``anon_max_size`` /
+# ``mcp_rate_limit_rps`` below), and (b) never substituted for a caller key
 # that Vulners itself rejected -- see ``auth.resolve_effective_auth``.
 _API_KEY_ENV_VAR = "VULNERS_API_KEY"
 _ANON_API_KEY_ENV_VAR = "VULNERS_MCP_ANON_API_KEY"
@@ -64,18 +71,26 @@ class Settings(BaseSettings):
     mcp_rate_limit_rps: float = 30.0
 
     # The local operator's own Vulners API key, read from VULNERS_API_KEY.
-    # See the module docstring above for the stdio-only usage contract.
+    # See the module docstring above for the stdio-only usage contract. Also
+    # the fallback source for ``anon_api_key`` below when
+    # VULNERS_MCP_ANON_API_KEY is unset.
     stdio_api_key: str | None = Field(default=None, validation_alias=_API_KEY_ENV_VAR)
 
-    # A dedicated, low-privilege Vulners API key backing the anonymous tier
-    # on the HTTP transport: a caller who sends no ``X-Api-Key`` header still
-    # gets their ``tools/call`` forwarded upstream, on THIS key -- subject to
-    # the size clamp (``anon_max_size``) and rate limit
-    # (``mcp_rate_limit_rps``) above. Empty (the default) means this
+    # The Vulners API key backing the anonymous tier on the HTTP transport: a
+    # caller who sends no ``X-Api-Key`` header still gets their
+    # ``tools/call`` forwarded upstream, on THIS key -- subject to the size
+    # clamp (``anon_max_size``) and rate limit (``mcp_rate_limit_rps``)
+    # above.
+    #
+    # Resolved from, in order: VULNERS_MCP_ANON_API_KEY if set, else
+    # VULNERS_API_KEY (the stdio operator key, reused) -- see the module
+    # docstring above for why. Empty (neither env var set) means this
     # deployment offers no anonymous tier at all, and ``auth.AuthMiddleware``
-    # falls back to the old hard-gate ``NO_API_KEY_MESSAGE``. Env override:
-    # VULNERS_MCP_ANON_API_KEY.
-    anon_api_key: str = Field(default="", validation_alias=_ANON_API_KEY_ENV_VAR)
+    # falls back to the old hard-gate ``NO_API_KEY_MESSAGE``.
+    anon_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices(_ANON_API_KEY_ENV_VAR, _API_KEY_ENV_VAR),
+    )
 
     # Anonymous-tier-only argument clamp: any top-level integer ``size``
     # tool argument is clamped down to this value before the call reaches
@@ -85,14 +100,15 @@ class Settings(BaseSettings):
     anon_max_size: int = 10
 
 
-def warn_if_api_key_env_set_outside_stdio() -> None:
-    """Log a warning if ``VULNERS_API_KEY`` is set while not in stdio mode.
+def log_anon_tier_key_source() -> None:
+    """Log, at INFO, when the anonymous tier is running on the fallback key.
 
-    stdio legitimately uses this as the local operator's own key
-    (``settings.stdio_api_key``). Outside of stdio it is never read -- every
-    HTTP call must carry its own caller-supplied ``X-Api-Key`` header -- so a
-    deployment that still sets this env var is silently wasting a key and
-    should have it removed from its environment.
+    Fires only outside of stdio mode, and only when ``anon_api_key``'s
+    fallback (see its ``validation_alias`` above) is the thing actually
+    supplying the key: ``VULNERS_API_KEY`` is set and
+    ``VULNERS_MCP_ANON_API_KEY`` is not. This replaces the old "VULNERS_API_KEY
+    is ignored outside stdio" warning -- that claim is no longer true now
+    that the anonymous tier reuses it. Neither env var's *value* is logged.
 
     Reads ``os.environ`` directly (mirroring ``Settings``' own env lookups)
     rather than the already-constructed ``settings`` singleton, so this stays
@@ -100,16 +116,17 @@ def warn_if_api_key_env_set_outside_stdio() -> None:
     order.
     """
     transport_mode = os.environ.get(_TRANSPORT_MODE_ENV_VAR, "stdio").lower()
-    if transport_mode != "stdio" and os.environ.get(_API_KEY_ENV_VAR):
-        logger.warning(
-            "%s is set but ignored in %s transport mode; the hosted server "
-            "never uses a server-side key — callers must send their own "
-            "X-Api-Key header. Remove this variable from the deployment "
-            "environment.",
+    if (
+        transport_mode != "stdio"
+        and os.environ.get(_API_KEY_ENV_VAR)
+        and not os.environ.get(_ANON_API_KEY_ENV_VAR)
+    ):
+        logger.info(
+            "anonymous tier uses %s (set %s to use a separate key)",
             _API_KEY_ENV_VAR,
-            transport_mode,
+            _ANON_API_KEY_ENV_VAR,
         )
 
 
 settings = Settings()
-warn_if_api_key_env_set_outside_stdio()
+log_anon_tier_key_source()

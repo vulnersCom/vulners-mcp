@@ -1,11 +1,20 @@
 """Tests for the anonymous tier (VU-1850 "anonymous tier" MR).
 
 A caller who sends no ``X-Api-Key`` still gets their ``tools/call``
-forwarded, on a DEDICATED, low-privilege key configured for this deployment
-(``settings.anon_api_key``) -- distinct from any human operator's own key,
-size-clamped, and rate-limited at the app level. A caller's own key is never
-capped here, and a REJECTED caller key is never quietly retried on the anon
-key (see ``test_bad_caller_key_is_never_masked_by_the_anon_key`` below).
+forwarded, on a key configured for this deployment (``settings.anon_api_key``)
+-- size-clamped and rate-limited at the app level. A caller's own key is
+never capped here, and a REJECTED caller key is never quietly retried on the
+anon key (see ``test_bad_caller_key_is_never_masked_by_the_anon_key`` below).
+
+Since VU-1850 "discovery truth", ``settings.anon_api_key`` resolves from
+``VULNERS_MCP_ANON_API_KEY`` if set, else falls back to ``VULNERS_API_KEY``
+(the stdio operator key, reused) -- see
+``tests/test_stdio_api_key.py::test_anon_api_key_falls_back_to_vulners_api_key_when_dedicated_env_unset``
+for the field-level fallback tests and
+``test_anon_tier_active_via_vulners_api_key_fallback_end_to_end`` below for
+the full request path. Most tests in this module set
+``settings.anon_api_key`` directly via ``monkeypatch`` -- the middleware
+doesn't care which env var actually produced the value.
 
 Full behavior matrix (see also ``tests/test_auth_gate.py`` for the "no anon
 tier configured" row):
@@ -136,6 +145,30 @@ async def test_anon_tier_call_is_forwarded_on_the_anon_key(
 
     assert result.data == {"ubuntu": ["22.04"]}
     assert route.calls[0].request.headers["x-api-key"] == "anon-dedicated-key"
+
+
+async def test_anon_tier_active_via_vulners_api_key_fallback_end_to_end(
+    mcp_streamable_http_client_factory, vulners_api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No env change required: with only VULNERS_API_KEY set (no
+    VULNERS_MCP_ANON_API_KEY), ``Settings.anon_api_key`` resolves to it (see
+    its ``AliasChoices`` fallback), so a keyless ``tools/call`` is allowed
+    through the gate and forwarded upstream on that key -- same as any other
+    anon-tier key, just sourced differently."""
+    monkeypatch.setenv("VULNERS_API_KEY", "operator-key")
+    monkeypatch.delenv("VULNERS_MCP_ANON_API_KEY", raising=False)
+    from vulners_mcp.settings import Settings
+
+    monkeypatch.setattr(settings, "anon_api_key", Settings().anon_api_key)
+    route = vulners_api.get("/api/v3/audit/getSupportedOS").mock(
+        return_value=httpx.Response(200, json={"result": "OK", "data": {"ubuntu": ["22.04"]}})
+    )
+
+    async with mcp_streamable_http_client_factory() as client:
+        result = await client.call_tool("get_supported_os", {})
+
+    assert result.data == {"ubuntu": ["22.04"]}
+    assert route.calls[0].request.headers["x-api-key"] == "operator-key"
 
 
 async def test_anon_tier_clamps_oversized_size_argument(

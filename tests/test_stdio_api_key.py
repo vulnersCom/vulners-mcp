@@ -11,6 +11,14 @@ must never be touched, no matter what the deployment's environment holds.
 inbound HTTP request in flight right now), not via the static
 ``settings.mcp_transport_mode`` string -- see ``http_context`` module
 docstring for why that is the more robust choice.
+
+This module also covers ``settings.anon_api_key``'s fallback to the same
+``VULNERS_API_KEY`` env var (VU-1850 "discovery truth" MR): unlike
+``stdio_api_key``, ``anon_api_key`` DOES reuse it, but only on the HTTP
+transport's anonymous tier and only when ``VULNERS_MCP_ANON_API_KEY`` is
+unset -- see ``vulners_mcp.settings.Settings.anon_api_key`` and
+``tests/test_auth_anon_tier.py`` for the end-to-end behavior this field
+feeds.
 """
 
 from __future__ import annotations
@@ -37,6 +45,36 @@ def test_stdio_api_key_defaults_to_none(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.delenv("VULNERS_API_KEY", raising=False)
     fresh = Settings()
     assert fresh.stdio_api_key is None
+
+
+def test_anon_api_key_falls_back_to_vulners_api_key_when_dedicated_env_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No env change required: an existing deployment's VULNERS_API_KEY now
+    also backs the HTTP anonymous tier when VULNERS_MCP_ANON_API_KEY is
+    unset (see ``Settings.anon_api_key``'s ``AliasChoices``)."""
+    monkeypatch.setenv("VULNERS_API_KEY", "operator-key")
+    monkeypatch.delenv("VULNERS_MCP_ANON_API_KEY", raising=False)
+    fresh = Settings()
+    assert fresh.anon_api_key == "operator-key"
+
+
+def test_anon_api_key_prefers_dedicated_env_var_when_both_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("VULNERS_API_KEY", "operator-key")
+    monkeypatch.setenv("VULNERS_MCP_ANON_API_KEY", "dedicated-anon-key")
+    fresh = Settings()
+    assert fresh.anon_api_key == "dedicated-anon-key"
+
+
+def test_anon_api_key_empty_when_neither_env_var_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("VULNERS_API_KEY", raising=False)
+    monkeypatch.delenv("VULNERS_MCP_ANON_API_KEY", raising=False)
+    fresh = Settings()
+    assert fresh.anon_api_key == ""
 
 
 def test_forward_headers_uses_stdio_key_only_when_not_an_http_request(
@@ -128,45 +166,66 @@ async def test_http_mode_end_to_end_ignores_owner_key_from_env(
     assert str(exc_info.value) == NO_API_KEY_MESSAGE
 
 
-def test_warns_when_api_key_env_set_outside_stdio_transport(
+def test_logs_info_when_anon_tier_falls_back_to_vulners_api_key(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
+    """Only VULNERS_API_KEY set, in HTTP mode: the anon-tier fallback (see
+    ``Settings.anon_api_key``) is what's actually engaging, so this gets an
+    informational (not warning) log -- and never the key's value."""
     monkeypatch.setenv("VULNERS_API_KEY", "some-key")
+    monkeypatch.delenv("VULNERS_MCP_ANON_API_KEY", raising=False)
     monkeypatch.setenv("MCP_TRANSPORT_MODE", "http")
-    from vulners_mcp.settings import warn_if_api_key_env_set_outside_stdio
+    from vulners_mcp.settings import log_anon_tier_key_source
 
-    with caplog.at_level(logging.WARNING, logger="vulners_mcp.settings"):
-        warn_if_api_key_env_set_outside_stdio()
+    with caplog.at_level(logging.INFO, logger="vulners_mcp.settings"):
+        log_anon_tier_key_source()
 
     assert any(
-        "VULNERS_API_KEY" in record.message and "ignored" in record.message
+        "VULNERS_API_KEY" in record.message and "anonymous tier" in record.message
         for record in caplog.records
     )
     assert "some-key" not in caplog.text
 
 
-def test_no_warning_when_transport_mode_is_stdio(
+def test_no_log_when_dedicated_anon_key_also_set(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """stdio using the owner's key is the intended, non-warning-worthy case."""
+    """Both env vars set: VULNERS_MCP_ANON_API_KEY wins outright, so the
+    fallback never engages and there is nothing to report."""
     monkeypatch.setenv("VULNERS_API_KEY", "owner-key")
-    monkeypatch.delenv("MCP_TRANSPORT_MODE", raising=False)
-    from vulners_mcp.settings import warn_if_api_key_env_set_outside_stdio
+    monkeypatch.setenv("VULNERS_MCP_ANON_API_KEY", "dedicated-anon-key")
+    monkeypatch.setenv("MCP_TRANSPORT_MODE", "http")
+    from vulners_mcp.settings import log_anon_tier_key_source
 
-    with caplog.at_level(logging.WARNING, logger="vulners_mcp.settings"):
-        warn_if_api_key_env_set_outside_stdio()
+    with caplog.at_level(logging.INFO, logger="vulners_mcp.settings"):
+        log_anon_tier_key_source()
 
     assert caplog.records == []
 
 
-def test_no_warning_when_api_key_env_absent_in_http_mode(
+def test_no_log_when_transport_mode_is_stdio(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """stdio using the owner's key is the intended, non-noteworthy case --
+    the anonymous tier is an HTTP-only concept."""
+    monkeypatch.setenv("VULNERS_API_KEY", "owner-key")
+    monkeypatch.delenv("MCP_TRANSPORT_MODE", raising=False)
+    from vulners_mcp.settings import log_anon_tier_key_source
+
+    with caplog.at_level(logging.INFO, logger="vulners_mcp.settings"):
+        log_anon_tier_key_source()
+
+    assert caplog.records == []
+
+
+def test_no_log_when_api_key_env_absent_in_http_mode(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     monkeypatch.delenv("VULNERS_API_KEY", raising=False)
     monkeypatch.setenv("MCP_TRANSPORT_MODE", "http")
-    from vulners_mcp.settings import warn_if_api_key_env_set_outside_stdio
+    from vulners_mcp.settings import log_anon_tier_key_source
 
-    with caplog.at_level(logging.WARNING, logger="vulners_mcp.settings"):
-        warn_if_api_key_env_set_outside_stdio()
+    with caplog.at_level(logging.INFO, logger="vulners_mcp.settings"):
+        log_anon_tier_key_source()
 
     assert caplog.records == []
