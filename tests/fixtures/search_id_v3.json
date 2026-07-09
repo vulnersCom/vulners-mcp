@@ -1,0 +1,336 @@
+{
+  "result": "OK",
+  "data": {
+    "documents": {
+      "CVE-2026-3909": {
+        "id": "CVE-2026-3909",
+        "vendorId": null,
+        "type": "cve",
+        "bulletinFamily": "cve",
+        "title": "CVE-2026-3909",
+        "description": "Out of bounds write in Skia in Google Chrome prior to 146.0.7680.75 allowed a remote attacker to perform out of bounds memory access via a crafted HTML page. (Chromium security severity: High)",
+        "attachments": [],
+        "timestamps": {
+          "created": "2026-03-12T21:42:08.362000Z",
+          "updated": "2026-07-08T17:10:54.341000Z",
+          "enriched": "2026-07-08T17:10:54.341000Z",
+          "reviewed": "2026-07-07T09:28:17.662000Z",
+          "metricsUpdated": "2026-06-16T00:52:16.558000Z",
+          "webApplicabilityUpdated": "2026-07-08T14:31:37.984000Z",
+          "contentUpdated": "2026-07-07T09:28:17.662000Z"
+        },
+        "published": "2026-03-12T21:30:51",
+        "modified": "2026-06-17T10:44:24",
+        "epss": [
+          {
+            "cve": "CVE-2026-3909",
+            "epss": 0.01629,
+            "percentile": 0.73353,
+            "date": "2026-07-09"
+          }
+        ],
+        "cvss": {
+          "score": 8.8,
+          "severity": "HIGH",
+          "version": "3.1",
+          "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H",
+          "source": "nvd"
+        },
+        "metrics": {
+          "nvd": {
+            "cvss31": {
+              "source": "nvd",
+              "version": "3.1",
+              "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H",
+              "baseScore": 8.8,
+              "baseSeverity": "HIGH",
+              "attackVector": "NETWORK",
+              "attackComplexity": "LOW",
+              "privilegesRequired": "NONE",
+              "userInteraction": "REQUIRED",
+              "scope": "UNCHANGED",
+              "confidentialityImpact": "HIGH",
+              "integrityImpact": "HIGH",
+              "availabilityImpact": "HIGH"
+            }
+          },
+          "cna": {
+            "cvss31": {
+              "source": "chrome-cve-admin",
+              "version": "3.1",
+              "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H",
+              "baseScore": 8.8,
+              "baseSeverity": "HIGH",
+              "attackVector": "NETWORK",
+              "attackComplexity": "LOW",
+              "privilegesRequired": "NONE",
+              "userInteraction": "REQUIRED",
+              "scope": "UNCHANGED",
+              "confidentialityImpact": "HIGH",
+              "integrityImpact": "HIGH",
+              "availabilityImpact": "HIGH"
+            }
+          },
+          "adp": {
+            "ssvc": {
+              "id": "CVE-2026-3909",
+              "role": "CISA Coordinator",
+              "options": [
+                {
+                  "Exploitation": "active"
+                },
+                {
+                  "Automatable": "no"
+                },
+                {
+                  "Technical Impact": "total"
+                }
+              ],
+              "version": "2.0.3",
+              "timestamp": "2026-03-13T16:47:27.715430Z"
+            },
+            "kev": {
+              "dateAdded": "2026-03-13",
+              "reference": "https://www.cisa.gov/known-exploited-vulnerabilities-catalog?field_cve=CVE-2026-3909"
+            }
+          }
+        },
+        "cvss2": {},
+        "cvss3": {
+          "cvssV31": {
+            "source": "nvd",
+            "version": "3.1",
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H",
+            "baseScore": 8.8,
+            "baseSeverity": "HIGH",
+            "attackVector": "NETWORK",
+            "attackComplexity": "LOW",
+            "privilegesRequired": "NONE",
+            "userInteraction": "REQUIRED",
+            "scope": "UNCHANGED",
+            "confidentialityImpact": "HIGH",
+            "integrityImpact": "HIGH",
+            "availabilityImpact": "HIGH"
+          }
+        },
+        "cvss4": {},
+        "href": "https://web.nvd.nist.gov/view/vuln/detail?vulnId=CVE-2026-3909",
+        "sourceAvailable": true,
+        "reporter": "Chrome",
+        "references": [
+          "https://issues.chromium.org/issues/491421267",
+          "https://chromereleases.googleblog.com/2026/03/stable-channel-update-for-desktop_13.html",
+          "https://www.cisa.gov/known-exploited-vulnerabilities-catalog?field_cve=CVE-2026-3909"
+        ],
+        "cvelist": [
+          "CVE-2026-3909"
+        ],
+        "immutableFields": [],
+        "lastseen": "2026-07-07T09:28:17",
+        "viewCount": 237,
+        "enchantments": {
+          "score": {
+            "value": 5.8,
+            "uncertanity": 2.2,
+            "vector": "NONE"
+          },
+          "short_description": "An out of bounds write in Skia for Google Chrome before 146.0.7680.75 enables remote memory access via a web page.",
+          "tags": [
+            "Skia out of bounds",
+            "Google Chrome",
+            "remote memory access",
+            "web page attack"
+          ],
+          "dependencies": {
+            "references": [
+              {
+                "type": "alpinelinux",
+                "idList": [
+                  "ALPINE:CVE-2026-3909"
+                ]
+              },
+              {
+                "type": "astralinux",
+                "idList": [
+                  "ASTRA:4530929694230909186481538291267"
+                ]
+              },
+              {
+                "type": "attackerkb",
+                "idList": [
+                  "AKB:3D7EAEBF-906D-4027-9EE8-F2845C26DC83"
+                ]
+              }
+            ]
+          },
+          "reddit": {
+            "counter": 14,
+            "posts": [
+              {
+                "link": "https://www.reddit.com/r/u_david-leroy/comments/1stbt00/cve20263909_chrome_skia_oob_write_explained/",
+                "text": "CVE-2026-3909:ChromeSkiaOOBWriteExplained",
+                "author": "david-leroy",
+                "author_photo": "",
+                "date": "2026-04-23T07:29:23+00:00"
+              },
+              {
+                "link": "https://www.reddit.com/r/Action1/comments/1slf7se/april_2026_patch_tuesday_review/",
+                "text": "April2026PatchTuesdayReview",
+                "author": "MauriceTorres",
+                "author_photo": "",
+                "date": "2026-04-14T17:21:18+00:00"
+              }
+            ]
+          },
+          "exploitation": {
+            "wildExploitedSources": [
+              {
+                "type": "cisa",
+                "idList": [
+                  "CISA:A3FC4BB7DB613C4EBFBC8FA93648A7C6"
+                ],
+                "firstSeen": "2026-03-13T12:00:00"
+              },
+              {
+                "type": "cisa_kev",
+                "idList": [
+                  "CISA-KEV-CVE-2026-3909"
+                ],
+                "firstSeen": "2026-03-13T00:00:00"
+              },
+              {
+                "type": "vulncheck_kev",
+                "idList": [
+                  "VULNCHECK-KEV:CVE-2026-3909"
+                ],
+                "firstSeen": "2026-03-12T00:00:00"
+              }
+            ],
+            "wildExploited": true,
+            "knownRansomwareCampaignUse": "Unknown"
+          },
+          "vulnersScore": 5.8
+        },
+        "aiDescription": "CVE-2026-3909 is a Google Chrome/Skia vulnerability: an out-of-bounds write in Skia could allow a remote attacker to trigger out-of-bounds memory access via a crafted HTML page. Affects Chrome before 146.0.7680.75; exploits are known to exist in the wild. Chrome/Chromium advisories note that fixes were released, with Chromium/Chrome 146.0.7680.80 (and related Debian security updates for stable and oldstable) addressing this issue. Impact is high, with potential for remote code execution, memory corruption, or other exploitation vectors, as reflected in KEV listings and security blogs. Mitigation steps include applying the updated Chrome/Chromium packages across affected platforms and monitoring for active exploitation indicators. If specific remediation details or exact patch notes are present in the connected advisories, follow those exact versions and upgrade paths. The CVE is actively tracked by CISA KEV and related security feeds.",
+        "cpe": [],
+        "cpe23": [],
+        "cwe": [
+          "CWE-787"
+        ],
+        "vulnStatus": "Analyzed",
+        "affectedSoftware": [
+          {
+            "cpeName": "google:chrome",
+            "version": "146.0.7680.80",
+            "operator": "lt",
+            "name": "google chrome"
+          }
+        ],
+        "affectedConfiguration": [],
+        "cpeConfiguration": {},
+        "cpeConfigurations": {
+          "nvdCpeConfiguration": [
+            {
+              "operator": "AND",
+              "nodes": [
+                {
+                  "operator": "OR",
+                  "negate": false,
+                  "cpeMatch": [
+                    {
+                      "vulnerable": true,
+                      "versionEndExcluding": "146.0.7680.80",
+                      "criteria": "cpe:2.3:a:google:chrome:*:*:*:*:*:*:*:*"
+                    }
+                  ]
+                },
+                {
+                  "operator": "OR",
+                  "negate": false,
+                  "cpeMatch": [
+                    {
+                      "vulnerable": false,
+                      "criteria": "cpe:2.3:o:apple:macos:-:*:*:*:*:*:*:*"
+                    },
+                    {
+                      "vulnerable": false,
+                      "criteria": "cpe:2.3:o:linux:linux_kernel:-:*:*:*:*:*:*:*"
+                    },
+                    {
+                      "vulnerable": false,
+                      "criteria": "cpe:2.3:o:microsoft:windows:-:*:*:*:*:*:*:*"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "vulnersCpeConfiguration": [
+            {
+              "operator": "OR",
+              "nodes": [
+                {
+                  "operator": "OR",
+                  "negate": false,
+                  "cpeMatch": [
+                    {
+                      "vulnerable": true,
+                      "versionEndExcluding": "146.0.7680.75",
+                      "criteria": "cpe:2.3:a:google:chrome:*:*:*:*:*:*:*:*",
+                      "provider": "Chrome"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "_index": true
+        },
+        "extraReferences": [
+          {
+            "url": "https://issues.chromium.org/issues/491421267"
+          },
+          {
+            "url": "https://chromereleases.googleblog.com/2026/03/stable-channel-update-for-desktop_13.html"
+          },
+          {
+            "url": "https://www.cisa.gov/known-exploited-vulnerabilities-catalog?field_cve=CVE-2026-3909"
+          }
+        ],
+        "cnaAffected": [
+          {
+            "vendor": "Google",
+            "product": "Chrome",
+            "versions": [
+              {
+                "version": "146.0.7680.75",
+                "status": "affected",
+                "lessThan": "146.0.7680.75",
+                "versionType": "custom"
+              }
+            ]
+          }
+        ],
+        "cnaCpeApplicability": [],
+        "solutions": [],
+        "workarounds": [],
+        "impacts": [],
+        "exploits": [
+          {
+            "id": "FEC11ED3-3153-5DB0-BE13-AB3069AF53D1",
+            "href": "https://github.com/anansi2safe/CVE-2026-3909",
+            "type": "githubexploit"
+          }
+        ],
+        "problemTypes": [],
+        "assigned": "2026-03-11T00:54:06",
+        "origin": "composite",
+        "threatData": {},
+        "webApplicability": {
+          "applicable": false,
+          "vulnerabilities": []
+        }
+      }
+    }
+  }
+}

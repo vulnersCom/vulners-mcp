@@ -1,0 +1,27 @@
+{
+  "result": "OK",
+  "data": {
+    "suggestions": [
+      [
+        "\"/log4j.properties\"",
+        false
+      ],
+      [
+        "affectedSoftware.name:\"slf4j-log4j12\" OR affectedPackage.packageName:\"slf4j-log4j12\" OR cpe:*slf4j-log4j12* order:published",
+        false
+      ],
+      [
+        "bulletinFamily:exploit AND log4js",
+        false
+      ],
+      [
+        "bulletinFamily:exploit AND Log4jHorizon",
+        false
+      ],
+      [
+        "bulletinFamily:exploit AND log4j1",
+        false
+      ]
+    ]
+  }
+}

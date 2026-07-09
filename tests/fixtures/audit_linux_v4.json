@@ -1,0 +1,112 @@
+{
+  "result": {
+    "issues": [
+      {
+        "package": "openssl 3.0.2 amd64",
+        "version": "3.0.2",
+        "fixedVersion": "3.0.2-0ubuntu1.23",
+        "applicableAdvisories": [
+          {
+            "id": "UB:CVE-2022-0778",
+            "match": "<3.0.2-0ubuntu1",
+            "registry": "deb",
+            "distro": [
+              "ubuntu",
+              "ubuntu-22.04",
+              "ubuntu-22.10",
+              "ubuntu-23.04",
+              "ubuntu-23.10",
+              "ubuntu-24.04",
+              "ubuntu-24.10",
+              "ubuntu-25.04",
+              "ubuntu-25.10",
+              "ubuntu-26.04"
+            ],
+            "cvelistMetrics": [
+              {
+                "epss": [
+                  {
+                    "cve": "CVE-2022-0778",
+                    "epss": 0.70561,
+                    "percentile": 0.99306,
+                    "date": "2026-06-16"
+                  }
+                ],
+                "cve": "CVE-2022-0778",
+                "cvss": {
+                  "score": 7.5,
+                  "severity": "HIGH",
+                  "version": "3.1",
+                  "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+                  "source": "nvd"
+                },
+                "published": "2022-03-15T17:05:20",
+                "exploitation": {
+                  "wildExploited": true,
+                  "wildExploitedSources": [
+                    {
+                      "type": "attackerkb",
+                      "idList": [
+                        "AKB:3F7EB772-577A-4EE4-BCBB-6DA9F0EC50F6"
+                      ],
+                      "firstSeen": "2022-03-15T00:00:00"
+                    }
+                  ]
+                },
+                "ai_score": {
+                  "value": 7.8,
+                  "uncertainty": 0.2
+                }
+              }
+            ],
+            "operator": "lt",
+            "version": "3.0.2-0ubuntu1"
+          },
+          {
+            "id": "UB:CVE-2022-2068",
+            "match": "<3.0.2-0ubuntu1.5",
+            "registry": "deb",
+            "distro": [
+              "ubuntu",
+              "ubuntu-22.04"
+            ],
+            "cvelistMetrics": [
+              {
+                "epss": [
+                  {
+                    "cve": "CVE-2022-2068",
+                    "epss": 0.95764,
+                    "percentile": 0.99863,
+                    "date": "2026-06-16"
+                  }
+                ],
+                "cve": "CVE-2022-2068",
+                "cvss": {
+                  "score": 10.0,
+                  "severity": "HIGH",
+                  "version": "2.0",
+                  "vector": "AV:N/AC:L/Au:N/C:C/I:C/A:C",
+                  "source": "nvd"
+                },
+                "published": "2022-06-21T14:45:20",
+                "exploitation": {
+                  "wildExploited": false,
+                  "wildExploitedSources": []
+                },
+                "ai_score": {
+                  "value": 9.2,
+                  "uncertainty": 0.6
+                }
+              }
+            ],
+            "operator": "lt",
+            "version": "3.0.2-0ubuntu1.5"
+          }
+        ],
+        "fixedPackage": "openssl_3.0.2-0ubuntu1.23_amd64.deb"
+      }
+    ],
+    "errors": {},
+    "totalPackages": 1
+  }
+}

@@ -1,0 +1,199 @@
+{
+  "result": [
+    {
+      "input": {
+        "part": "a",
+        "vendor": "openssl",
+        "product": "openssl",
+        "version": "1.0.1g",
+        "update": "",
+        "edition": "",
+        "language": "",
+        "target_sw": "",
+        "target_hw": "",
+        "other": ""
+      },
+      "matched_criteria": "cpe:2.3:a:openssl:openssl:1.0.1g:*:*:*:*:*:*:*",
+      "vulnerabilities": [
+        {
+          "id": "CVE-2010-5298",
+          "reasons": [
+            {
+              "config": "nvd",
+              "criterias": [
+                [
+                  {
+                    "criteria": "cpe:2.3:a:openssl:openssl:*:*:*:*:*:*:*:*",
+                    "vulnerable": true,
+                    "versionEndIncluding": "1.0.1g"
+                  }
+                ]
+              ]
+            }
+          ],
+          "type": "cve",
+          "title": "CVE-2010-5298",
+          "description": "Race condition in the ssl3_read_bytes function in s3_pkt.c in OpenSSL through 1.0.1g, when SSL_MODE_RELEASE_BUFFERS is enabled, allows remote attackers to inject data across sessions or cause a denial of service (use-after-free and parsing error) via an SSL connection in a multithreaded environment.",
+          "published": "2014-04-14T16:00:00",
+          "modified": "2026-06-16T23:26:30",
+          "href": "https://web.nvd.nist.gov/view/vuln/detail?vulnId=CVE-2010-5298",
+          "cvelist": [
+            "CVE-2010-5298"
+          ],
+          "short_description": "Race condition in ssl3_read_bytes function in OpenSS",
+          "ai_score": {
+            "value": 7.0,
+            "uncertainty": 0.4
+          },
+          "cvelistMetrics": [
+            {
+              "epss": [
+                {
+                  "cve": "CVE-2010-5298",
+                  "epss": 0.34132,
+                  "percentile": 0.98184,
+                  "date": "2026-06-16"
+                }
+              ],
+              "cve": "CVE-2010-5298",
+              "cvss": {
+                "score": 4.0,
+                "severity": "MEDIUM",
+                "version": "2.0",
+                "vector": "AV:N/AC:H/Au:N/C:N/I:P/A:P",
+                "source": "nvd"
+              },
+              "published": "2014-04-14T16:00:00",
+              "exploitation": {
+                "wildExploited": false,
+                "wildExploitedSources": []
+              },
+              "ai_score": {
+                "value": 7.0,
+                "uncertainty": 0.4
+              }
+            }
+          ]
+        },
+        {
+          "id": "VERACODE:3451",
+          "reasons": [
+            {
+              "config": "vulners",
+              "criterias": [
+                [
+                  {
+                    "criteria": "cpe:2.3:a:openssl:openssl:*:*:*:*:*:*:*:*",
+                    "vulnerable": true,
+                    "versionEndIncluding": "1.0.1g"
+                  }
+                ]
+              ]
+            }
+          ],
+          "type": "veracode",
+          "title": "Denial Of Service (DoS) Through Memory Consumption And Application Crash",
+          "description": "OpenSSL is vulnerable to denial of service (DoS) attacks through memory consumption and application crash. This is caused because the dtls1_clear_queues function in d1_lib.c frees data not taking into account that application data could arrive between the ChangeCipherSpec message and the Finished message. This can cause the DTLS peer to buffer the application data and cause a segmentation fault.\n",
+          "published": "2017-02-06T05:19:25",
+          "modified": "2022-12-13T13:44:00",
+          "href": "https://sca.analysiscenter.veracode.com/vulnerability-database/security/1/1/sid-3451/summary",
+          "cvelist": [
+            "CVE-2014-8176"
+          ],
+          "short_description": "OpenSSL vulnerability to DoS through memory consumption and application cras",
+          "ai_score": {
+            "value": 7.2
+          },
+          "cvelistMetrics": [
+            {
+              "epss": [
+                {
+                  "cve": "CVE-2014-8176",
+                  "epss": 0.16587,
+                  "percentile": 0.96597,
+                  "date": "2026-06-16"
+                }
+              ],
+              "cve": "CVE-2014-8176",
+              "cvss": {
+                "score": 7.5,
+                "severity": "HIGH",
+                "version": "2.0",
+                "vector": "AV:N/AC:L/Au:N/C:P/I:P/A:P",
+                "source": "nvd"
+              },
+              "published": "2015-06-12T00:00:00",
+              "exploitation": {
+                "wildExploited": false,
+                "wildExploitedSources": []
+              },
+              "ai_score": {
+                "value": 7.4,
+                "uncertainty": 0.4
+              }
+            }
+          ]
+        },
+        {
+          "id": "VERACODE:3482",
+          "reasons": [
+            {
+              "config": "vulners",
+              "criterias": [
+                [
+                  {
+                    "criteria": "cpe:2.3:a:openssl:openssl:*:*:*:*:*:*:*:*",
+                    "vulnerable": true,
+                    "versionEndIncluding": "1.0.1g"
+                  }
+                ]
+              ]
+            }
+          ],
+          "type": "veracode",
+          "title": "Denial Of Service (DoS) Through Null Pointer Dereference",
+          "description": "OpenSSL is vulnerable to denial of service (DoS) attacks. These attacks can be triggered in the ssl3_send_client_key_exchange function when an anonymous ECDH ciphersuite, caused a NULL certificate value.\n",
+          "published": "2017-02-07T02:02:21",
+          "modified": "2022-09-16T20:29:52",
+          "href": "https://sca.analysiscenter.veracode.com/vulnerability-database/security/1/1/sid-3482/summary",
+          "cvelist": [
+            "CVE-2014-3470"
+          ],
+          "short_description": "Denial Of Service (DoS) due to Null Pointer Dereference in OpenSS",
+          "ai_score": {
+            "value": 7.0
+          },
+          "cvelistMetrics": [
+            {
+              "epss": [
+                {
+                  "cve": "CVE-2014-3470",
+                  "epss": 0.85784,
+                  "percentile": 0.99697,
+                  "date": "2026-06-16"
+                }
+              ],
+              "cve": "CVE-2014-3470",
+              "cvss": {
+                "score": 4.3,
+                "severity": "MEDIUM",
+                "version": "2.0",
+                "vector": "AV:N/AC:M/Au:N/C:N/I:N/A:P",
+                "source": "nvd"
+              },
+              "published": "2014-06-05T21:00:00",
+              "exploitation": {
+                "wildExploited": false,
+                "wildExploitedSources": []
+              },
+              "ai_score": {
+                "value": 7.4,
+                "uncertainty": 0.3
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

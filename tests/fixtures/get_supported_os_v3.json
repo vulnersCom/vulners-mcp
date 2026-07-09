@@ -1,0 +1,32 @@
+{
+  "result": "OK",
+  "data": {
+    "supportedOS": {
+      "oracle": "rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\\n'",
+      "astra": "dpkg-query -W -f='${Status} ${Package} ${Version} ${Architecture}\\n'|awk '($1 == \"install\" || $1 == \"hold\") && ($2 == \"ok\") {print $4\" \"$5\" \"$6}'",
+      "amazon linux": "rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\\n'",
+      "ubuntu": "dpkg-query -W -f='${Status} ${Package} ${Version} ${Architecture}\\n'|awk '($1 == \"install\" || $1 == \"hold\") && ($2 == \"ok\") {print $4\" \"$5\" \"$6}'",
+      "alt linux": "rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\\n'",
+      "alpine": "apk list -I",
+      "oraclelinux": "rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\\n'",
+      "rhel": "rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\\n'",
+      "centos": "rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\\n'",
+      "redos": "rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\\n'",
+      "virtuozzo": "rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\\n'",
+      "almalinux": "rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\\n'",
+      "photon": "rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\\n'",
+      "wolfi": "apk list -I",
+      "ol": "rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\\n'",
+      "kali": "apt list -i",
+      "debian": "dpkg-query -W -f='${Status} ${Package} ${Version} ${Architecture}\\n'|awk '($1 == \"install\" || $1 == \"hold\") && ($2 == \"ok\") {print $4\" \"$5\" \"$6}'",
+      "acronis": "rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\\n'",
+      "amzn": "rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\\n'",
+      "redhat": "rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\\n'",
+      "sles": "rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\\n'",
+      "rocky": "rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\\n'",
+      "suse": "rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\\n'",
+      "fedora": "rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\\n'",
+      "linuxmint": "dpkg-query -W -f='${Status} ${Package} ${Version} ${Architecture}\\n'|awk '($1 == \"install\" || $1 == \"hold\") && ($2 == \"ok\") {print $4\" \"$5\" \"$6}'"
+    }
+  }
+}

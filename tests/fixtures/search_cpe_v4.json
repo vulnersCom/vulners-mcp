@@ -1,0 +1,11 @@
+{
+  "result": {
+    "best_match": "cpe:2.3:a:openssl:openssl:*:*:*:*:*:*:*:*",
+    "cpe": [
+      "cpe:2.3:a:openssl:openssl_development:*:*:*:*:*:*:*:*",
+      "cpe:2.3:a:openssl:openssl_debug:*:*:*:*:*:*:*:*",
+      "cpe:2.3:a:openssl:openssl_engine_padlock:*:*:*:*:*:*:*:*",
+      "cpe:2.3:a:openssl:openssl_engine_afalg:*:*:*:*:*:*:*:*"
+    ]
+  }
+}

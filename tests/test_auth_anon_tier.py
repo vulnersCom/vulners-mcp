@@ -208,6 +208,13 @@ async def test_anon_tier_leaves_size_within_budget_untouched(
 async def test_keyed_call_is_never_clamped_even_when_anon_tier_configured(
     mcp_streamable_http_client_factory, vulners_api, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """The anon-tier-only clamp (``settings.anon_max_size`` = 10 here) must
+    never apply to a keyed call. Uses ``size=50`` -- above the anon-only
+    clamp (10) but below ``search_lucene``'s own tool-level hard cap
+    (``server.MAX_LUCENE_SIZE`` = 100, see ``test_tool_contracts.py`` for
+    that cap's own tests), so this test isolates the anon-tier clamp
+    specifically rather than conflating it with the universal hard cap.
+    """
     monkeypatch.setattr(settings, "anon_api_key", "anon-dedicated-key")
     monkeypatch.setattr(settings, "anon_max_size", 10)
     route = vulners_api.post("/api/v3/search/lucene").mock(
@@ -217,11 +224,11 @@ async def test_keyed_call_is_never_clamped_even_when_anon_tier_configured(
     )
 
     async with mcp_streamable_http_client_factory({"X-Api-Key": "caller-key"}) as client:
-        await client.call_tool("search_lucene", {"query": "type:cve", "size": 500})
+        await client.call_tool("search_lucene", {"query": "type:cve", "size": 50})
 
     upstream_headers = route.calls[0].request.headers
     assert upstream_headers["x-api-key"] == "caller-key"
-    assert json.loads(route.calls[0].request.content)["size"] == 500
+    assert json.loads(route.calls[0].request.content)["size"] == 50
 
 
 # -------------------- Anon-tier app-level rate limit --------------------

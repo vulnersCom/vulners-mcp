@@ -236,11 +236,24 @@ class VulnersClient:
         )
 
     def _unwrap(self, response: httpx.Response) -> Any:
-        """Validate the HTTP status, then unwrap the ``{"result", "data"}`` envelope.
+        """Validate the HTTP status, then unwrap the Vulners response envelope.
 
-        Vulners responses are shaped ``{"result": "OK", "data": {...}}``. On
-        success this returns ``data``; a non-OK ``result`` or an HTTP error
-        status both raise :class:`ApiError`.
+        Vulners uses two different envelope shapes depending on API version:
+
+        - v3 endpoints (``/api/v3/...``) wrap the payload as
+          ``{"result": "OK", "data": {...}}``. On success this returns
+          ``data``.
+        - v4 endpoints (``/api/v4/...``) put the payload directly in
+          ``result`` with no ``"OK"``/``data`` wrapper, e.g.
+          ``{"result": {"issues": [...], ...}}`` or
+          ``{"result": [{"input": ..., "vulnerabilities": [...]}]}``. On
+          success this returns ``result`` itself.
+
+        HTTP status is already validated above (>=400 raises), so any 2xx
+        response is a successful call; ``result`` being a dict/list is simply
+        the v4 shape for "success", not an error. A non-container, non-"OK"
+        ``result`` (e.g. an explicit error string) still raises
+        :class:`ApiError`, as does an HTTP error status.
         """
         if response.status_code >= 400:
             raise self._error_for_status(response)
@@ -256,7 +269,12 @@ class VulnersClient:
             ) from exc
 
         if isinstance(body, dict) and "result" in body:
-            if body.get("result") == "OK":
+            result = body.get("result")
+            if isinstance(result, (dict, list)):
+                # v4 shape: `result` IS the payload on success.
+                return result
+            if result == "OK":
+                # v3 shape: `data` is the payload on success.
                 return body.get("data")
             logger.debug(
                 "Vulners API result!=OK for %s: %s", response.request.url, body
