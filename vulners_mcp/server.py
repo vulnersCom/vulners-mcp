@@ -655,7 +655,7 @@ async def get_supported_os() -> Dict[str, Any]:
 async def audit_linux_packages(
     os: Annotated[str, "Linux distribution identifier (e.g., ubuntu, debian, centos, rhel, fedora). Use get_supported_os() to see available options."], 
     version: Annotated[str, "Distribution version/release (e.g., 22.04, 12, 8, 40). Must match a supported version for the specified OS."], 
-    package: Annotated[List[str], "List of package names with versions (e.g., ['openssl-3.0.2', 'curl-7.81.0-1ubuntu1.14']). Format: 'name-version' or 'name-version-release'."], 
+    package: Annotated[List[str], "Installed packages, each formatted EXACTLY as the target OS's own package manager lists them -- i.e. one line of the output produced by the command get_supported_os() returns for this OS. DEB-based distros (ubuntu, debian, astra, linuxmint, ...): space-separated 'name version arch', e.g. 'openssl 3.0.2-0ubuntu1.6 amd64'. RPM-based distros (rhel, centos, oracle, almalinux, rocky, fedora, amazon, suse, ...): 'name-version-release.arch', e.g. 'openssl-1.0.2k-25.el7_9.x86_64'. The bare hyphenated 'name-version' short form is NOT accepted -- the API rejects it as 'Invalid package'."],
     include_candidates: Annotated[Optional[bool], "Whether to include potential matches in results. If None, uses default behavior (typically false)."] = None
 ) -> Any:
     """Linux package audit (RPM/DEB) for a given distro + version.
@@ -672,7 +672,7 @@ async def audit_linux_packages(
       {
         "os_name": "<distro-id>",            # e.g. "ubuntu", "debian", "centos", "rhel"
         "os_version": "<release>",           # e.g. "22.04", "12", "8"
-        "packages": ["pkg-ver" | "name-ver-rel", ...],
+        "packages": ["name version arch" (deb) | "name-version-release.arch" (rpm), ...],
         "cvelist_metrics": true,             # always sent by this tool, for CVSS/EPSS/exploitation data per advisory
         "include_candidates": false          # optional; include potential matches
       }
