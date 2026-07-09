@@ -12,28 +12,46 @@ from . import discovery
 from .auth import AuthMiddleware, resolve_effective_auth
 from .vulners_client import VulnersClient
 
-# Curated default field projection for `bulletin_by_id`. Deliberately
-# excludes `references` (opt-in via the `references` tool param) and the
-# heaviest catch-all content. Fetching fields=["*"] with references=True for
-# a single, heavily-referenced CVE (e.g. CVE-2021-44228 / Log4Shell) returns
-# ~113 MiB -- ~1180x larger than this curated projection (~98 KiB for the
-# same CVE) -- and has been observed to break real MCP client sessions. See
-# VU-1850/VU-1946.
+# Curated default field projection for `bulletin_by_id` -- a compact triage
+# card, not a dossier. Deliberately excludes `references` (opt-in via the
+# `references` tool param), `description` (large, prose-heavy -- opt in via
+# `fields`), the legacy bare `cvss`/`cvss2` variants (cvss3 only), and the
+# heaviest `enchantments` sub-fields.
+#
+# `enchantments` alone was 98.1% of a curated-default bulletin for CVE-2021-
+# 44228 / Log4Shell (~98 KiB total) -- large enough to still trip the Claude
+# Code CLI's ~25k-token per-tool-result cap on the first, unnarrowed call.
+# Of that, 88.9% was `enchantments.dependencies` / `.backreferences`
+# (cross-reference indexes that scale with total ecosystem attention to a
+# CVE, effectively unbounded for famous ones) plus raw `.twitter` / `.reddit`
+# mention dumps -- none of which add much triage value. The Vulners API
+# supports ES-style dot-path field projection into nested objects, so only
+# the actually useful, compact AI/exploitation sub-fields are requested
+# here: `.exploitation` (wildExploited flag, confirming sources, telemetry),
+# `.score` / `.vulnersScore` (Vulners AI score), `.tags` (AI keyword tags),
+# and `.short_description` (AI one-line summary -- doubles as a lightweight
+# substitute for the dropped `description`).
+#
+# Net effect: the same Log4Shell default drops from ~98 KiB to ~2.2 KiB
+# (~45x smaller) while still covering id/title/CVSS/EPSS/CVE-list/
+# exploitation-signal. See verify/bulletin-fields-sizes.txt for the full
+# per-field byte breakdown. VU-1850/VU-1946.
 DEFAULT_BULLETIN_FIELDS = [
     "id",
     "title",
-    "description",
     "type",
     "href",
     "published",
     "modified",
-    "cvss",
-    "cvss2",
+    "bulletinFamily",
     "cvss3",
     "epss",
     "cvelist",
-    "enchantments",
-    "bulletinFamily",
+    "enchantments.exploitation",
+    "enchantments.score",
+    "enchantments.vulnersScore",
+    "enchantments.tags",
+    "enchantments.short_description",
 ]
 
 # Curated default hit projection for `search_lucene`. Discovery-phase search
@@ -139,16 +157,27 @@ async def _get_client() -> VulnersClient:
 #
 @mcp.tool(
     name="bulletin_by_id",
-    description="🚨 PRIMARY TOOL FOR KNOWN IDs 🚨 Fetch full bulletin by CVE or Vulners ID. Use this when you have a specific identifier like CVE-2024-1234, RHSA-2024:001, CTX694938, etc. Supports single ID or list of IDs. When list is provided, references are automatically set to False. NEVER use search_lucene for known IDs."
+    description="🚨 PRIMARY TOOL FOR KNOWN IDs 🚨 Fetch a bulletin by CVE or Vulners ID. Returns a COMPACT triage-card summary by default -- id, title, CVSS3, EPSS, CVE list, and a compact exploitation/AI signal -- NOT the full record. Pass fields=[...] to widen (e.g. add 'description', 'cvss', 'cvss2', 'affectedSoftware') or references=True for the linked-bulletin graph; requesting everything can be very large. Supports single ID or list of IDs. When list is provided, references are automatically set to False. NEVER use search_lucene for known IDs."
 )
 async def bulletin_by_id(
     id: Annotated[Union[str, List[str]], "Single CVE ID, Vulners ID, or bulletin ID to fetch, or a list of IDs. Supports CVE identifiers (CVE-2024-21762), vendor-specific IDs (RHSA-2024:1234), or Vulners internal IDs. When a list is provided, references are always False regardless of the `references` argument."],
-    references: Annotated[bool, "Include the full reference graph (linked advisories, patches, related bulletins) for a SINGLE-ID lookup. Defaults to False: the curated field projection already covers the essentials (CVSS/CVSS2/CVSS3, EPSS, AI enchantments, CVE list). Set True only when you need the reference graph and can accept a much larger response -- for heavily-referenced CVEs this can inflate the payload from ~100 KiB to 100+ MiB. Ignored (always False) when `id` is a list."] = False,
-    fields: Annotated[Optional[List[str]], "Override the default curated field projection. Pass ['*'] to request every field Vulners has for the bulletin (can be very large for popular CVEs). If omitted, a curated default is used: id, title, description, type, href, published, modified, cvss, cvss2, cvss3, epss, cvelist, enchantments, bulletinFamily."] = None,
+    references: Annotated[bool, "Include the full reference graph (linked advisories, patches, related bulletins) for a SINGLE-ID lookup. Defaults to False: the compact default projection already covers the essentials (CVSS3, EPSS, exploitation signal, CVE list). Set True only when you need the reference graph and can accept a much larger response -- for heavily-referenced CVEs this can inflate the payload from a few KiB to 100+ MiB. Ignored (always False) when `id` is a list."] = False,
+    fields: Annotated[Optional[List[str]], "Override the default COMPACT field projection to widen the response. Pass ['*'] to request every field Vulners has for the bulletin (can be very large for popular CVEs). Useful individual fields to add: 'description' (full prose description, dropped from the default), 'cvss'/'cvss2' (legacy score variants; the default already includes 'cvss3'), 'affectedSoftware'/'cnaAffected' (affected systems), 'enchantments' (the FULL AI/exploitation blob, including the large cross-reference and social-mention indexes the default omits). If omitted, the lean default is used: id, title, type, href, published, modified, bulletinFamily, cvss3, epss, cvelist, enchantments.exploitation, enchantments.score, enchantments.vulnersScore, enchantments.tags, enchantments.short_description."] = None,
 ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
     """🚨 PRIMARY TOOL FOR KNOWN IDs 🚨
-    Fetch full bulletin by CVE or Vulners ID.
-    Retrieve complete detailed information for vulnerability bulletins using their unique identifiers.
+    Returns a COMPACT summary by default: id, title, type, href, dates, a single CVSS variant (cvss3),
+    EPSS, the linked CVE list, and a compact exploitation/AI signal (wildExploited flag + confirming
+    sources, AI score, AI tags, AI one-line summary). This is a triage card, not the full record.
+
+    To get more, pass `fields=[...]` -- e.g. add `"description"` for the full prose description,
+    `"cvss"` / `"cvss2"` for the legacy score variants, `"affectedSoftware"` / `"cnaAffected"` for
+    affected systems, or `"enchantments"` for the FULL AI/exploitation blob (includes large
+    cross-reference and social-mention indexes the default omits). Pass `references=True` for the
+    linked-bulletin graph (patches, advisories, related CVEs). Requesting everything
+    (`fields=["*"], references=True`) can be very large -- 100+ MiB for a heavily-referenced CVE.
+
+    Fetch a bulletin by CVE or Vulners ID.
+    Retrieve vulnerability bulletin data using its unique identifier(s).
 
     ⚡ **CRITICAL: Use this tool when you have specific identifiers**
     - ✅ Single ID: "CVE-2024-1234", "CVE-2025-7775", "CVE-2021-44228"
@@ -160,18 +189,6 @@ async def bulletin_by_id(
 
     ❌ **NEVER use search_lucene for known IDs** - This tool is optimized for direct ID lookup.
 
-    This tool fetches comprehensive data for vulnerability bulletins, providing all available fields and metadata. It's ideal for getting in-depth information about specific vulnerabilities when you already know their identifiers.
-
-    **What you get:**
-    - **Complete vulnerability details**: Full description, technical details, and impact assessment
-    - **CVSS scoring**: Both CVSSv2 and CVSSv3 metrics with detailed breakdown
-    - **Affected systems**: Comprehensive list of affected software, versions, and packages
-    - **Timeline information**: Publication date, modification history, and discovery details
-    - **Reference links**: Official advisories, patches, and additional resources
-    - **Exploitation data**: Information about known exploits, proof-of-concepts, and wild exploitation
-    - **AI-enhanced metadata**: Vulners' AI scoring and additional context
-    - **Related bulletins**: Connected CVEs, advisories, and security notices
-
     **Supported ID formats:**
     - CVE identifiers: "CVE-2024-21762", "CVE-2023-12345"
     - Vendor-specific IDs: "RHSA-2024:1234", "DSA-2024-567"
@@ -179,31 +196,33 @@ async def bulletin_by_id(
     - Security advisory IDs: "MS24-001", "CISCO-SA-20240101"
 
     **Use cases:**
-    - Get complete details for a known CVE: "Show me full details for CVE-2024-21762"
-    - Analyze specific vulnerability impact: "What's the complete technical breakdown of this CVE?"
-    - Research exploitation status: "Has this vulnerability been exploited in the wild?"
-    - Check for available patches: "What fixes are available for this security issue?"
-    - Validate vulnerability details: "Confirm the CVSS score and affected versions"
-    - Investigate related threats: "What other vulnerabilities are connected to this one?"
+    - Quick triage of a known CVE: "Show me CVE-2024-21762" (default projection is enough)
+    - Research exploitation status: "Has this vulnerability been exploited in the wild?" (default `enchantments.exploitation` covers this)
+    - Get the full technical writeup: "Give me the full description of CVE-2024-21762" (pass `fields=[..., "description"]`)
+    - Check for available patches: "What fixes are available for this security issue?" (pass `references=True`)
+    - Investigate related threats: "What other vulnerabilities are connected to this one?" (pass `references=True`)
     - Batch processing: Pass multiple IDs as a list for efficient bulk retrieval
-    - Multiple CVEs: Use a list of IDs for batch processing instead of multiple calls
 
-    **Returned data includes (default curated projection):**
-    - Basic information: ID, title, description, type, bulletin family
-    - Scoring: CVSS (v2/v3) base score, EPSS score
+    **Returned data by default (compact projection -- a triage card):**
+    - Basic information: ID, title, type, bulletin family, href
+    - Scoring: CVSS3 base score/severity/vector, EPSS score
     - Dates: Published, modified
     - Linked CVEs: `cvelist`
-    - AI analysis and exploitation evidence: `enchantments` (AI score, tags, exploitation status, social mentions, dependency/reference type index)
+    - Compact exploitation/AI signal: `enchantments.exploitation` (wildExploited flag + confirming sources + telemetry), `enchantments.score`/`vulnersScore` (Vulners AI score), `enchantments.tags` (AI keyword tags), `enchantments.short_description` (AI one-line summary -- a lightweight substitute for the omitted `description`)
 
-    **Additional data available via opt-in (`references=true` and/or `fields=["*"]`):**
-    - Full reference graph: URLs to patches, advisories, vendor statements, related CVEs
-    - Affected systems: Software names, version ranges, package details (`cnaAffected`, `affectedSoftware`)
-    - Weakness classification: CWE classifications
-    - Every other field Vulners has for the bulletin
-    Note: for heavily-referenced CVEs, the full graph can be 100+ MiB -- request it only when you actually need it.
+    **Menu of the most useful fields to widen with (pass via `fields=[...]`, keeping whichever defaults you still want):**
+    - `description` -- full prose vulnerability description (dropped from the default; can be large)
+    - `cvss` / `cvss2` -- legacy CVSS score variants (default only includes `cvss3`)
+    - `affectedSoftware` / `cnaAffected` -- affected software/vendor/product/version details
+    - `cwe` -- weakness classification
+    - `enchantments` -- the FULL AI/exploitation blob, including `enchantments.dependencies` and `enchantments.backreferences` (cross-reference indexes -- can be tens of KiB for heavily-discussed CVEs) and raw `enchantments.twitter`/`enchantments.reddit` mention dumps
+    - `["*"]` -- every field Vulners has for the bulletin
+
+    **Reference graph (separate opt-in, not a `fields` value):**
+    - `references=True` -- linked advisories, patches, vendor statements, related bulletins. For heavily-referenced CVEs this can be 100+ MiB; request it only when you actually need it.
 
     **🚨 TOOL SELECTION RULES FOR MODELS 🚨**
-    
+
     **WHEN TO USE THIS TOOL:**
     - ✅ User asks about specific CVE: "Analyze CVE-2025-7775"
     - ✅ User provides bulletin ID: "Look up CTX694938"
@@ -211,15 +230,15 @@ async def bulletin_by_id(
     - ✅ You have any specific identifier (CVE, RHSA, MS, CTX, etc.)
     - ✅ For multiple CVEs: Pass as a list for batch processing
     - ✅ Batch analysis: "Analyze these CVEs: CVE-2024-1234, CVE-2025-5678"
-    
+
     **WHEN NOT TO USE THIS TOOL:**
     - ❌ User asks "Find vulnerabilities in Apache" (use search_lucene)
     - ❌ User asks "Show me recent CVEs" (use search_lucene)
     - ❌ User asks "What vulnerabilities exist in Chrome?" (use search_lucene)
-    
+
     **EFFICIENCY RULES:**
-    - Single IDs: Fetches a curated field projection by default (id, title, description, type, href, published, modified, cvss, cvss2, cvss3, epss, cvelist, enchantments, bulletinFamily), with `references=false`. Pass `references=true` and/or `fields=["*"]` only when you need the full reference graph or every field -- for heavily-referenced CVEs this can be 100+ MiB.
-    - Multiple IDs: When a list is provided, `references` is always False for efficient batch processing (the `references` argument is ignored). The same curated field projection applies unless overridden with `fields`.
+    - Single IDs: Fetches a compact field projection by default (id, title, type, href, published, modified, bulletinFamily, cvss3, epss, cvelist, enchantments.exploitation/score/vulnersScore/tags/short_description), with `references=false`. Widen deliberately with `fields=[...]` (see menu above) or `fields=["*"]`, and/or `references=true`, only when you actually need more -- for heavily-referenced CVEs the unbounded request can be 100+ MiB.
+    - Multiple IDs: When a list is provided, `references` is always False for efficient batch processing (the `references` argument is ignored). The same compact field projection applies unless overridden with `fields`.
     - For multiple CVEs: Pass as a list for batch processing instead of multiple calls
     - Discovery vs. retrieval: Use `search_lucene` only for discovery when identifiers are unknown. Once IDs are known, prefer `bulletin_by_id` for retrieval
     Endpoint:
@@ -231,25 +250,26 @@ async def bulletin_by_id(
     Request body (single ID, default projection):
       {
         "id": "CVE-2024-3094",
-        "fields": ["id", "title", "description", "type", "href", "published", "modified", "cvss", "cvss2", "cvss3", "epss", "cvelist", "enchantments", "bulletinFamily"],
+        "fields": ["id", "title", "type", "href", "published", "modified", "bulletinFamily", "cvss3", "epss", "cvelist", "enchantments.exploitation", "enchantments.score", "enchantments.vulnersScore", "enchantments.tags", "enchantments.short_description"],
         "references": false
       }
 
     Request body (multiple IDs, default projection):
       {
         "id": ["CVE-2024-3094", "CVE-2025-7775"],
-        "fields": ["id", "title", "description", "type", "href", "published", "modified", "cvss", "cvss2", "cvss3", "epss", "cvelist", "enchantments", "bulletinFamily"],
+        "fields": ["id", "title", "type", "href", "published", "modified", "bulletinFamily", "cvss3", "epss", "cvelist", "enchantments.exploitation", "enchantments.score", "enchantments.vulnersScore", "enchantments.tags", "enchantments.short_description"],
         "references": false
       }
 
     Examples:
-      Single ID (default projection): { "id": "CVE-2024-3094", "references": false }
-      Single ID, full reference graph: { "id": "CVE-2024-3094", "references": true, "fields": ["*"] }
+      Single ID (default compact projection): { "id": "CVE-2024-3094", "references": false }
+      Single ID, widen with description: { "id": "CVE-2024-3094", "fields": ["id", "title", "type", "cvss3", "epss", "cvelist", "description"] }
+      Single ID, full reference graph + every field: { "id": "CVE-2024-3094", "references": true, "fields": ["*"] }
       Multiple IDs: { "id": ["CVE-2024-3094", "CVE-2025-7775"], "references": false }
 
     Returns:
-      Single ID: JSON bulletin object with complete vulnerability details.
-      Multiple IDs: JSON array of bulletin objects with vulnerability details.
+      Single ID: JSON bulletin object with the compact projection (or whatever `fields` you asked for).
+      Multiple IDs: JSON array of bulletin objects with the compact projection (or whatever `fields` you asked for).
     """
     client = await _get_client()
 

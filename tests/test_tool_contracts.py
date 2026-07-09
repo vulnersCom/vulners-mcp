@@ -261,6 +261,137 @@ async def test_bulletin_by_id_projection_returns_curated_fields_for_real_log4she
     assert "references" not in doc
 
 
+# -------------------- bulletin_by_id: VU-1946 leaner default --------------------
+#
+# mcp-!9 cut the default from ~113 MiB to ~98 KiB, but live testing showed even
+# ~98 KiB can trip the Claude Code CLI's ~25k-token per-tool-result cap on the
+# first (unnarrowed) call. Root cause (see verify/bulletin-fields-sizes.txt):
+# 98.1% of that ~98 KiB was a single field, `enchantments`, and 88.9% of
+# *that* was `enchantments.dependencies` / `.backreferences` (unbounded
+# cross-reference indexes that scale with how much the wider ecosystem has
+# written about a CVE) plus raw `.twitter` / `.reddit` mention dumps. The AI
+# exploitation signal actually worth keeping by default -- `.exploitation`,
+# `.score`, `.vulnersScore`, `.tags`, `.short_description` -- is only ~1.4%
+# of `enchantments`. The Vulners API supports ES-style dot-path field
+# projection into nested objects, so those sub-fields can be requested
+# individually instead of the whole `enchantments` blob.
+
+
+def test_default_bulletin_fields_excludes_heavy_fields() -> None:
+    """The leaner default must drop `description` entirely, must not request
+    the bare legacy `cvss` or `cvss2` variants (cvss3 only), and must not
+    request the whole `enchantments` blob (only its compact sub-fields).
+    """
+    assert "description" not in DEFAULT_BULLETIN_FIELDS
+    assert "cvss" not in DEFAULT_BULLETIN_FIELDS
+    assert "cvss2" not in DEFAULT_BULLETIN_FIELDS
+    assert "enchantments" not in DEFAULT_BULLETIN_FIELDS
+    for heavy in (
+        "enchantments.dependencies",
+        "enchantments.backreferences",
+        "enchantments.twitter",
+        "enchantments.reddit",
+    ):
+        assert heavy not in DEFAULT_BULLETIN_FIELDS
+
+
+def test_default_bulletin_fields_includes_lean_triage_set() -> None:
+    """The leaner default must still cover a useful at-a-glance triage card."""
+    for lean in (
+        "id",
+        "title",
+        "type",
+        "href",
+        "published",
+        "modified",
+        "cvss3",
+        "epss",
+        "cvelist",
+        "enchantments.exploitation",
+        "enchantments.score",
+    ):
+        assert lean in DEFAULT_BULLETIN_FIELDS
+
+
+async def test_bulletin_by_id_default_request_body_matches_lean_field_set(
+    mcp_client, vulners_api, load_fixture
+) -> None:
+    fixture = load_fixture("search_id_v3.json")
+    route = vulners_api.post("/api/v3/search/id").mock(
+        return_value=httpx.Response(200, json=fixture)
+    )
+
+    await mcp_client.call_tool("bulletin_by_id", {"id": "CVE-2026-3909"})
+
+    sent = json.loads(route.calls[0].request.content)
+    assert "description" not in sent["fields"]
+    assert "cvss" not in sent["fields"]
+    assert "cvss2" not in sent["fields"]
+    assert "enchantments" not in sent["fields"]
+    assert "enchantments.exploitation" in sent["fields"]
+
+
+async def test_bulletin_by_id_lean_default_projection_stays_under_byte_budget(
+    mcp_client, vulners_api, load_fixture
+) -> None:
+    """Real recorded proof of the VU-1946 follow-up size fix: CVE-2021-44228
+    (Log4Shell) is 100,544 bytes (~98 KiB) with the mcp-!9 curated default,
+    and 2,230 bytes (~2.2 KiB, ~45x smaller) with the new leaner default --
+    see ``tests/fixtures/bulletin_by_id_lean_log4j.json``, captured live
+    against the real Vulners API with the new default field set (dot-path
+    projection into `enchantments`), and
+    ``verify/bulletin-fields-sizes.txt`` for the full per-field breakdown.
+
+    Budget is set well above the real 2,174-byte document size (real number
+    + generous headroom) so the test guards against a regression that
+    reintroduces a heavy field (e.g. `enchantments.dependencies`) rather than
+    pinning an exact byte count.
+    """
+    fixture = load_fixture("bulletin_by_id_lean_log4j.json")
+    vulners_api.post("/api/v3/search/id").mock(
+        return_value=httpx.Response(200, json=fixture)
+    )
+
+    result = await mcp_client.call_tool("bulletin_by_id", {"id": "CVE-2021-44228"})
+
+    doc = result.data["documents"]["CVE-2021-44228"]
+    for key in ("id", "title", "type", "cvss3", "epss", "cvelist", "enchantments"):
+        assert key in doc
+    assert "description" not in doc
+    assert "cvss" not in doc
+    assert "cvss2" not in doc
+    assert "references" not in doc
+
+    ench = doc["enchantments"]
+    for key in ("exploitation", "score", "vulnersScore", "tags", "short_description"):
+        assert key in ench
+    for heavy in ("dependencies", "backreferences", "twitter", "reddit"):
+        assert heavy not in ench
+
+    assert len(json.dumps(doc, separators=(",", ":")).encode("utf-8")) < 10 * 1024
+
+
+async def test_bulletin_by_id_fields_override_still_widens_past_lean_default(
+    mcp_client, vulners_api, load_fixture
+) -> None:
+    """A caller who explicitly asks for `description` (or any other opt-in
+    field not in the leaner default) must get exactly what they asked for --
+    only the DEFAULT changed, the override mechanism from mcp-!9 is
+    untouched.
+    """
+    fixture = load_fixture("search_id_v3.json")
+    route = vulners_api.post("/api/v3/search/id").mock(
+        return_value=httpx.Response(200, json=fixture)
+    )
+
+    await mcp_client.call_tool(
+        "bulletin_by_id", {"id": "CVE-2026-3909", "fields": ["id", "title", "description"]}
+    )
+
+    sent = json.loads(route.calls[0].request.content)
+    assert sent["fields"] == ["id", "title", "description"]
+
+
 # -------------------- search_lucene: projection + size cap --------------------
 
 
