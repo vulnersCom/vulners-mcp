@@ -168,18 +168,24 @@ def build_server_card(version: str) -> Dict[str, Any]:
         # tools/call) -- this section is a description of that enforcement,
         # not a separate promise, so it can't drift from what the server
         # actually does. maxResultSize is read live from
-        # settings.anon_max_size, not a literal.
+        # settings.anon_max_size, not a literal. ``required`` is likewise
+        # derived from ``settings.anon_api_key`` -- the SAME truthiness
+        # check ``auth.resolve_effective_auth`` uses to decide between its
+        # "anon-tier" and "none" modes (see auth.py) -- rather than a
+        # separate literal that could silently drift from what a keyless
+        # `tools/call` actually does on this deployment.
         "authentication": {
             "anonymousDiscovery": True,
             "toolInvocation": {
-                "required": False,
+                "required": not bool(settings.anon_api_key),
                 "anonymousTier": {
                     "allowed": True,
                     "maxResultSize": settings.anon_max_size,
                     "rateLimited": True,
                     "note": (
                         "Anonymous tier requires this deployment to have a "
-                        "dedicated anon-tier key configured; if not, a "
+                        "dedicated anon-tier key configured; if not "
+                        "configured (see toolInvocation.required), a "
                         "keyless call fails with a guidance error instead."
                     ),
                 },
