@@ -54,7 +54,7 @@ This server holds no privileged API key of its own. Send your personal Vulners A
 
 ## Tools
 
-- bulletin_by_id: Fetch a full vulnerability bulletin by CVE or Vulners ID (single ID or a list of IDs).
+- bulletin_by_id: Fetch a vulnerability bulletin by CVE or Vulners ID (single ID or a list of IDs). Returns a COMPACT summary by default (id, title, CVSS3, EPSS, exploitation signal, CVE list); pass `fields=[...]` (e.g. `"description"`) or `references=True` to widen -- requesting everything can be very large.
 - search_lucene: Full-text discovery search of the Vulners knowledge base using Lucene syntax.
 - audit_software: Audit specific software versions (structured CPE) for known vulnerabilities.
 - get_supported_os: List the OS identifiers/versions supported by the Linux package audit.

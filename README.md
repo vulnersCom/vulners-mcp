@@ -305,7 +305,7 @@ The server provides 7 MCP tools for vulnerability research:
 
 - **search_lucene** - 🔍 DISCOVERY TOOL FOR UNKNOWN VULNERABILITIES 🔍 Full-text search in Vulners Knowledge Base using Lucene syntax. Use ONLY when you don't have specific IDs or version information. NEVER use for known CVE/bulletin IDs - use bulletin_by_id instead. NEVER use for specific software versions (e.g., 'Chrome 138.0.7204.184') - use audit_software instead. 🚨 CRITICAL: For vendor/product searches, ALWAYS use cnaAffected.vendor and cnaAffected.product fields - the affectedSoftware field does NOT exist.
 
-- **bulletin_by_id** - 🚨 PRIMARY TOOL FOR KNOWN IDs 🚨 Fetch full bulletin by CVE or Vulners ID. Use this when you have a specific identifier like CVE-2024-1234, RHSA-2024:001, CTX694938, etc. Supports single ID or list of IDs. When list is provided, references are automatically set to False. NEVER use search_lucene for known IDs.
+- **bulletin_by_id** - 🚨 PRIMARY TOOL FOR KNOWN IDs 🚨 Fetch a bulletin by CVE or Vulners ID. Returns a COMPACT triage-card summary by default -- id, title, CVSS3, EPSS, CVE list, and a compact exploitation/AI signal -- NOT the full record. Pass fields=[...] to widen (e.g. add 'description', 'cvss', 'cvss2', 'affectedSoftware') or references=True for the linked-bulletin graph; requesting everything can be very large. Supports single ID or list of IDs. When list is provided, references are automatically set to False. NEVER use search_lucene for known IDs.
 
 - **query_autocomplete** - Autocomplete helper for search inputs (vendors, products, CVEs, etc.). Get search suggestions from the Vulners database.
 
