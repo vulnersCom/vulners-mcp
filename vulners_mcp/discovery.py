@@ -89,7 +89,7 @@ This server holds no privileged API key of its own. Send your personal Vulners A
 AUTH_MD = f"""\
 # auth.md
 
-Authentication policy for the Vulners MCP server (mcp.vulners.com), written for AI agents and other automated clients.
+You are an agent. This document is the self-contained source of truth for how to register and use a credential (an API key) to authenticate to the Vulners MCP server (mcp.vulners.com) and the Vulners vulnerability intelligence API behind it. It is written for AI agents and other automated clients.
 
 ## This server holds no privileged API key of its own
 
@@ -113,26 +113,55 @@ Running this server yourself over stdio (e.g. from Claude Desktop)? Set the `VUL
 
 ## Supported registration methods
 
-- `user_delegated` -- a human operator registers a Vulners account and provisions an API key for the agent to send in `X-Api-Key`. This is the only credential-provisioning method today.
-- Identity assertions (ID-JAG, verified email) and anonymous credential provisioning are not supported: an agent cannot self-register a key. The keyless "anonymous tier" described above is a call-time convenience on this deployment's own shared key, not a way to obtain your own credential.
+- `user_delegated` — a human operator registers an account and provisions an
+  API key for the agent (the only method today).
+- Anonymous provisioning and identity assertions (ID-JAG, verified email) are
+  not supported.
 
-## Step 1 -- Register and provision a credential
+## Step 1 — Register and provision a credential
 
-Registration is interactive (human-in-the-loop); there is no unauthenticated provisioning endpoint. An agent cannot self-register -- ask your human operator to complete this step and hand you the key.
+Registration is interactive (human-in-the-loop):
 
-1. Create a Vulners account: {VULNERS_SIGNUP_URL}
+1. Create an account: {VULNERS_SIGNUP_URL}
 2. Open the API keys section of the personal area: {VULNERS_USERINFO_URL}
-3. Generate an API key (credential type: `api_key`). Optional per-key scopes (`api`, `scan`, `report`) and an optional IP allowlist are configured there.
+3. Generate an API key (credential type: `api_key`). Optional per-key scopes
+   (`api`, `scan`, `report`) and an optional IP allowlist are configured there.
 
-Both URLs return an interactive challenge to non-browser clients -- they must be opened in a regular browser by the human operator.
+Both URLs above return an interactive Cloudflare browser challenge to
+non-browser clients — an agent fetching them directly gets a 403. They must
+be opened in a regular browser by the human operator.
 
-## Step 2 -- Use the credential
+There is no unauthenticated provisioning endpoint; ask your user to complete
+this step and hand you the key.
 
-Send the API key in the `X-Api-Key` request header on every MCP `tools/call`; it is forwarded to the Vulners API for that request only.
+## Step 2 — Use the credential
 
-## Step 3 -- Rotation and revocation
+Send the API key in the `X-Api-Key` request header on every call. Search is a
+POST endpoint that takes its parameters as a JSON body, not query string:
 
-Keys are listed, rotated and revoked at {VULNERS_USERINFO_URL}. If a previously working key starts returning 401/403 it was revoked or its IP allowlist no longer matches -- obtain a new key via Step 1; do not retry with the stale credential.
+```http
+POST /api/v3/search/lucene HTTP/1.1
+Host: vulners.com
+X-Api-Key: <your-api-key>
+Content-Type: application/json
+
+{{"query": "type:cve", "size": 10}}
+```
+
+Machine-readable API description: {OPENAPI_URL}
+(security scheme: `apiKey` in header `X-Api-Key`) — this OpenAPI spec covers
+the `/api/v4/audit/*` and STIX endpoints only; it does not describe search.
+Search and the rest of the API are documented at
+{API_DOCS_URL} and reachable through the Vulners MCP
+server. Requests carrying a valid `X-Api-Key` bypass interactive browser
+checks.
+
+## Step 3 — Rotation and revocation
+
+Keys are listed, rotated and revoked at {VULNERS_USERINFO_URL}.
+If a previously working key starts returning 401/403, it was revoked or its
+IP allowlist no longer matches — obtain a new key via Step 1; do not retry
+with the stale credential.
 
 ## Full registration walk-through
 

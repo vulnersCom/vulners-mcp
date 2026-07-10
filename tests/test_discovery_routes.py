@@ -133,6 +133,11 @@ def test_auth_md_has_a_self_contained_registration_flow(client: TestClient) -> N
     assert "user_delegated" in body
     assert "ID-JAG" in body
     assert "verified email" in body
+    # Agent-audience element + the exact em-dash Step heading format the
+    # isitagentready flow detector keys off (mirrors vulners.com/auth.md,
+    # which passes; the double-hyphen variant did not register the flow).
+    assert "You are an agent" in body
+    assert "## Step 1 — Register and provision a credential" in body
 
 
 def test_root_has_a_link_header(client: TestClient) -> None:
