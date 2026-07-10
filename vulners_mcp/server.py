@@ -1288,7 +1288,15 @@ async def health_check(request: Request) -> PlainTextResponse:
 async def root(request: Request) -> HTMLResponse:
     with open("./vulners_mcp/mcp.html", "r", encoding="utf-8") as file:
         html_content = file.read()
-    return HTMLResponse(content=html_content)
+    # Advertise the machine-readable discovery surface right from the
+    # landing page's response headers, not just via in-page links -- mirrors
+    # vulners.com's homepage Link header.
+    link_header = (
+        '</.well-known/api-catalog>; rel="api-catalog", '
+        f'<{discovery.API_DOCS_URL}>; rel="service-doc", '
+        '</llms.txt>; rel="describedby"'
+    )
+    return HTMLResponse(content=html_content, headers={"Link": link_header})
 
 
 # -------------------- Agent discovery documents --------------------
@@ -1335,3 +1343,20 @@ async def api_catalog(request: Request) -> JSONResponse:
 @mcp.custom_route("/.well-known/agents/index.json", methods=["GET"])
 async def agents_index(request: Request) -> JSONResponse:
     return JSONResponse(discovery.build_agents_index())
+
+
+@mcp.custom_route("/sitemap.xml", methods=["GET"])
+async def sitemap_xml(request: Request) -> PlainTextResponse:
+    return PlainTextResponse(discovery.SITEMAP_XML, media_type="application/xml")
+
+
+@mcp.custom_route("/.well-known/agent-skills/index.json", methods=["GET"])
+async def agent_skills_index(request: Request) -> JSONResponse:
+    return JSONResponse(discovery.build_agent_skills_index())
+
+
+@mcp.custom_route("/.well-known/agent-skills/vulners-mcp/SKILL.md", methods=["GET"])
+async def agent_skill_md(request: Request) -> PlainTextResponse:
+    return PlainTextResponse(
+        discovery.SKILL_MD, media_type="text/markdown; charset=utf-8"
+    )

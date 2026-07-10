@@ -275,6 +275,153 @@
             </footer>
         </main>
     </div>
+
+    <script data-cfasync="false">
+        // WebMCP tool registration (https://github.com/webmachinelearning/webmcp).
+        // Mirrors, for in-browser AI agents landing on this page, a small subset
+        // of the tools the Vulners MCP server itself exposes over the Model
+        // Context Protocol. This is a best-effort, unauthenticated preview: full,
+        // authenticated access is via the MCP endpoint at
+        // https://mcp.vulners.com/mcp using an X-Api-Key header.
+        //
+        // Not a module script on purpose: `type="module"` scripts are deferred,
+        // and this page runs behind Cloudflare Rocket Loader, which defers/mangles
+        // async and module scripts. Registration must run synchronously during
+        // page load for in-browser agents (and the isitagentready.com webMcp
+        // scanner check) to see it.
+        (function () {
+            'use strict';
+
+            // Chrome 150+ moved the surface from `navigator.modelContext` to
+            // `document.modelContext`; resolve document first, falling back to
+            // the older (still-polyfilled-by-some-scanners) navigator alias.
+            var modelContext =
+                (typeof document !== 'undefined' && document.modelContext) ||
+                (typeof navigator !== 'undefined' && navigator.modelContext);
+
+            if (!modelContext || typeof modelContext.registerTool !== 'function') {
+                return;
+            }
+
+            var MCP_ENDPOINT = 'https://mcp.vulners.com/mcp';
+            var MCP_HINT =
+                'This page mirrors a subset of the Vulners MCP server tools for ' +
+                'in-browser agents. For reliable, authenticated access connect to ' +
+                'the Vulners MCP server at ' + MCP_ENDPOINT +
+                ' and send your Vulners API key in the X-Api-Key header.';
+
+            function textResult(text) {
+                return { content: [{ type: 'text', text: text }] };
+            }
+
+            function fallbackResult(reason) {
+                return textResult('Could not complete this request in the browser (' + reason + '). ' + MCP_HINT);
+            }
+
+            var tools = [
+                {
+                    name: 'vulners_search',
+                    description:
+                        'Best-effort browser preview of the Vulners MCP search_lucene tool: ' +
+                        'search the Vulners vulnerability database (CVEs, exploits, advisories) ' +
+                        'using Lucene query syntax. For full access use the Vulners MCP server ' +
+                        'at ' + MCP_ENDPOINT + '.',
+                    inputSchema: {
+                        type: 'object',
+                        properties: {
+                            query: {
+                                type: 'string',
+                                description: "Lucene query, e.g. 'type:cve AND cvss.score:[9 TO 10]'"
+                            },
+                            size: { type: 'integer', minimum: 1, maximum: 20, default: 10 }
+                        },
+                        required: ['query']
+                    },
+                    execute: function (args) {
+                        args = args || {};
+                        var query = typeof args.query === 'string' ? args.query.trim() : '';
+                        if (!query) {
+                            return Promise.resolve(textResult('Missing required "query" argument. ' + MCP_HINT));
+                        }
+                        var size = Math.trunc(Number(args.size));
+                        if (!isFinite(size) || size < 1) size = 10;
+                        if (size > 20) size = 20;
+
+                        return fetch('https://vulners.com/api/v3/search/lucene/', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ query: query, size: size })
+                        })
+                            .then(function (resp) {
+                                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                                return resp.json();
+                            })
+                            .then(function (data) {
+                                var hits = (data && data.data && data.data.search) || [];
+                                var results = hits.slice(0, size).map(function (item) {
+                                    var src = item._source || {};
+                                    return { id: src.id || item._id, title: src.title, cvss: src.cvss, published: src.published };
+                                });
+                                return textResult(JSON.stringify(results));
+                            })
+                            .catch(function (err) {
+                                return fallbackResult(err && err.message ? err.message : String(err));
+                            });
+                    }
+                },
+                {
+                    name: 'vulners_bulletin_by_id',
+                    description:
+                        'Best-effort browser preview of the Vulners MCP bulletin_by_id tool: ' +
+                        'fetch a vulnerability bulletin by CVE or Vulners ID. For full access ' +
+                        'use the Vulners MCP server at ' + MCP_ENDPOINT + '.',
+                    inputSchema: {
+                        type: 'object',
+                        properties: {
+                            id: { type: 'string', description: 'e.g. CVE-2024-3094' }
+                        },
+                        required: ['id']
+                    },
+                    execute: function (args) {
+                        args = args || {};
+                        var id = typeof args.id === 'string' ? args.id.trim() : '';
+                        if (!id) {
+                            return Promise.resolve(textResult('Missing required "id" argument. ' + MCP_HINT));
+                        }
+
+                        return fetch('https://vulners.com/api/v3/search/id/', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ id: [id] })
+                        })
+                            .then(function (resp) {
+                                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                                return resp.json();
+                            })
+                            .then(function (data) {
+                                var doc = data && data.data && data.data.documents && data.data.documents[id];
+                                if (!doc) throw new Error('no bulletin found for ' + id);
+                                return textResult(JSON.stringify(doc));
+                            })
+                            .catch(function (err) {
+                                return fallbackResult(err && err.message ? err.message : String(err));
+                            });
+                    }
+                }
+            ];
+
+            tools.forEach(function (tool) {
+                try {
+                    Promise.resolve(modelContext.registerTool(tool)).catch(function () {
+                        // Registration is best-effort: ignore duplicate-name or
+                        // availability rejections.
+                    });
+                } catch (e) {
+                    // Same as above, for surfaces that throw synchronously.
+                }
+            });
+        })();
+    </script>
 </body>
 
 </html>

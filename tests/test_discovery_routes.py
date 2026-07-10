@@ -12,6 +12,7 @@ self-consistency check builds the fully composed ASGI app (see
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 
@@ -115,6 +116,63 @@ def test_auth_md_describes_the_anonymous_tier(client: TestClient) -> None:
     assert "never silently retried" in body
 
 
+def test_auth_md_has_a_self_contained_registration_flow(client: TestClient) -> None:
+    """VU-1850 host-parity: auth.md must document a complete, standalone
+    registration/credential-provisioning flow (not just a link out to
+    vulners.com/auth.md), matching what vulners.com serves."""
+    body = client.get("/auth.md").text
+    assert "https://vulners.com/signup" in body
+    assert "X-Api-Key" in body
+    assert "api_key" in body
+    assert "Step 1" in body
+
+
+def test_root_has_a_link_header(client: TestClient) -> None:
+    """VU-1850 host-parity: the homepage must carry a Link response header
+    pointing agents/crawlers at the discovery surface, matching vulners.com."""
+    resp = client.get("/")
+    assert resp.status_code == 200
+    link = resp.headers.get("link", "")
+    assert 'rel="api-catalog"' in link
+    assert 'rel="service-doc"' in link
+    assert 'rel="describedby"' in link
+
+
+def test_mcp_html_registers_webmcp_tools(client: TestClient) -> None:
+    """VU-1850 host-parity: the landing page must register WebMCP tools for
+    in-browser agents (and the isitagentready.com webMcp scanner check),
+    matching vulners.com's two registered tools."""
+    body = client.get("/").text
+    assert "modelContext" in body
+    assert "vulners_search" in body
+    assert "vulners_bulletin_by_id" in body
+
+
+def test_agent_skills_index(client: TestClient) -> None:
+    resp = client.get("/.well-known/agent-skills/index.json")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("application/json")
+    data = resp.json()
+    assert data["$schema"] == "https://schemas.agentskills.io/discovery/0.2.0/schema.json"
+    skill = data["skills"][0]
+    assert skill["name"] == "vulners-mcp"
+    assert skill["url"] == "/.well-known/agent-skills/vulners-mcp/SKILL.md"
+
+    skill_md_resp = client.get(skill["url"])
+    assert skill_md_resp.status_code == 200
+    served_digest = "sha256:" + hashlib.sha256(skill_md_resp.content).hexdigest()
+    # Drift guard: the digest advertised in the index must equal the sha256
+    # of the bytes actually served at skill["url"], not a stale literal.
+    assert skill["digest"] == served_digest
+
+
+def test_agent_skill_md(client: TestClient) -> None:
+    resp = client.get("/.well-known/agent-skills/vulners-mcp/SKILL.md")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/markdown")
+    assert resp.text.startswith("---\nname: vulners-mcp")
+
+
 def test_robots_txt(client: TestClient) -> None:
     resp = client.get("/robots.txt")
     assert resp.status_code == 200
@@ -130,6 +188,35 @@ def test_robots_txt_allows_the_well_known_discovery_paths(client: TestClient) ->
     assert "Allow: /auth.md" in body
     assert "Allow: /.well-known/" in body
     assert "Disallow" not in body
+
+
+def test_robots_txt_has_content_signal(client: TestClient) -> None:
+    """VU-1850 host-parity: robots.txt must carry a Content-Signal directive
+    inside the User-agent: * block, matching vulners.com."""
+    body = client.get("/robots.txt").text
+    assert "Content-Signal: search=yes, ai-input=yes, ai-train=yes" in body
+
+
+def test_robots_txt_references_the_sitemap(client: TestClient) -> None:
+    body = client.get("/robots.txt").text
+    assert "Sitemap: https://mcp.vulners.com/sitemap.xml" in body
+
+
+def test_sitemap_xml(client: TestClient) -> None:
+    resp = client.get("/sitemap.xml")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("application/xml")
+    body = resp.text
+    for url in (
+        "https://mcp.vulners.com/",
+        "https://mcp.vulners.com/llms.txt",
+        "https://mcp.vulners.com/auth.md",
+        "https://mcp.vulners.com/.well-known/mcp/server-card.json",
+        "https://mcp.vulners.com/.well-known/api-catalog",
+        "https://mcp.vulners.com/.well-known/agents/index.json",
+        "https://mcp.vulners.com/.well-known/agent-skills/index.json",
+    ):
+        assert f"<loc>{url}</loc>" in body
 
 
 def test_server_card(client: TestClient) -> None:
