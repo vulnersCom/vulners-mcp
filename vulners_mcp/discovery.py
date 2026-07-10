@@ -111,11 +111,14 @@ Key scopes (`api`, `scan`, `report`) and IP allowlists are also configured there
 
 Running this server yourself over stdio (e.g. from Claude Desktop)? Set the `VULNERS_API_KEY` environment variable to your own key. In stdio mode the server uses it for every tool call, since there is no per-request HTTP header available -- the anonymous tier is an HTTP-transport concept only and does not apply here.
 
-## Registration and credential provisioning
+## Supported registration methods
 
-Registration is interactive (human-in-the-loop); there is no unauthenticated provisioning endpoint. An agent cannot self-register -- ask your human operator to complete Step 1 and hand you the key.
+- `user_delegated` -- a human operator registers a Vulners account and provisions an API key for the agent to send in `X-Api-Key`. This is the only credential-provisioning method today.
+- Identity assertions (ID-JAG, verified email) and anonymous credential provisioning are not supported: an agent cannot self-register a key. The keyless "anonymous tier" described above is a call-time convenience on this deployment's own shared key, not a way to obtain your own credential.
 
-### Step 1 -- Register and provision a credential
+## Step 1 -- Register and provision a credential
+
+Registration is interactive (human-in-the-loop); there is no unauthenticated provisioning endpoint. An agent cannot self-register -- ask your human operator to complete this step and hand you the key.
 
 1. Create a Vulners account: {VULNERS_SIGNUP_URL}
 2. Open the API keys section of the personal area: {VULNERS_USERINFO_URL}
@@ -123,11 +126,11 @@ Registration is interactive (human-in-the-loop); there is no unauthenticated pro
 
 Both URLs return an interactive challenge to non-browser clients -- they must be opened in a regular browser by the human operator.
 
-### Step 2 -- Use the credential
+## Step 2 -- Use the credential
 
 Send the API key in the `X-Api-Key` request header on every MCP `tools/call`; it is forwarded to the Vulners API for that request only.
 
-### Step 3 -- Rotation and revocation
+## Step 3 -- Rotation and revocation
 
 Keys are listed, rotated and revoked at {VULNERS_USERINFO_URL}. If a previously working key starts returning 401/403 it was revoked or its IP allowlist no longer matches -- obtain a new key via Step 1; do not retry with the stale credential.
 
