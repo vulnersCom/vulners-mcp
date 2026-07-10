@@ -125,6 +125,14 @@ def test_auth_md_has_a_self_contained_registration_flow(client: TestClient) -> N
     assert "X-Api-Key" in body
     assert "api_key" in body
     assert "Step 1" in body
+    # The isitagentready authMd check recognises the standalone flow via
+    # registration-method markers (as vulners.com/auth.md does); without these
+    # it reports "No complete standalone registration flow found" and the host
+    # caps at Level 4. Keep the markers present.
+    assert "Supported registration methods" in body
+    assert "user_delegated" in body
+    assert "ID-JAG" in body
+    assert "verified email" in body
 
 
 def test_root_has_a_link_header(client: TestClient) -> None:
