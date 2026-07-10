@@ -3,29 +3,40 @@
 
 These give AI agents and crawlers a machine-readable description of the Vulners
 MCP server: an ``llms.txt`` guide, an ``auth.md`` authentication policy, a
-``robots.txt`` policy, an SEP-1649 MCP server card, an RFC 9727 API catalog,
-and a DNS-AID organization agent index. The content is kept here as module
-constants / builders so ``server.py`` stays small and the documents need no
-filesystem access at request time.
+``robots.txt`` policy, a ``sitemap.xml``, an SEP-1649 MCP server card, an
+RFC 9727 API catalog, a DNS-AID organization agent index, and an Agent Skills
+0.2.0 index. The content is kept here as module constants / builders so
+``server.py`` stays small and the documents need no filesystem access at
+request time.
 """
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any, Dict
 
 from .settings import settings
 
 # Public URLs referenced by the discovery documents.
+ROOT_URL = "https://mcp.vulners.com/"
 MCP_ENDPOINT = "https://mcp.vulners.com/mcp"
 HEALTH_URL = "https://mcp.vulners.com/health"
 LLMS_TXT_URL = "https://mcp.vulners.com/llms.txt"
 AUTH_MD_URL = "https://mcp.vulners.com/auth.md"
+SITEMAP_XML_URL = "https://mcp.vulners.com/sitemap.xml"
 MCP_SERVER_CARD_URL = "https://mcp.vulners.com/.well-known/mcp/server-card.json"
+API_CATALOG_URL = "https://mcp.vulners.com/.well-known/api-catalog"
 AGENTS_INDEX_URL = "https://mcp.vulners.com/.well-known/agents/index.json"
+AGENT_SKILLS_INDEX_URL = "https://mcp.vulners.com/.well-known/agent-skills/index.json"
+# The skill document itself is referenced by a site-relative path in the
+# index (see build_agent_skills_index()), matching the Agent Skills 0.2.0
+# convention; this is the path the route in server.py is registered on.
+AGENT_SKILL_MD_PATH = "/.well-known/agent-skills/vulners-mcp/SKILL.md"
 WEBSITE_URL = "https://vulners.com"
 REPOSITORY_URL = "https://github.com/vulnersCom/vulners-mcp"
 OPENAPI_URL = "https://vulners.com/api/openapi.json"
 API_DOCS_URL = "https://docs.vulners.com/docs/api/"
+VULNERS_SIGNUP_URL = "https://vulners.com/signup"
 VULNERS_USERINFO_URL = "https://vulners.com/userinfo"
 VULNERS_AUTH_MD_URL = "https://vulners.com/auth.md"
 VULNERS_LLMS_TXT_URL = "https://vulners.com/llms.txt"
@@ -100,6 +111,26 @@ Key scopes (`api`, `scan`, `report`) and IP allowlists are also configured there
 
 Running this server yourself over stdio (e.g. from Claude Desktop)? Set the `VULNERS_API_KEY` environment variable to your own key. In stdio mode the server uses it for every tool call, since there is no per-request HTTP header available -- the anonymous tier is an HTTP-transport concept only and does not apply here.
 
+## Registration and credential provisioning
+
+Registration is interactive (human-in-the-loop); there is no unauthenticated provisioning endpoint. An agent cannot self-register -- ask your human operator to complete Step 1 and hand you the key.
+
+### Step 1 -- Register and provision a credential
+
+1. Create a Vulners account: {VULNERS_SIGNUP_URL}
+2. Open the API keys section of the personal area: {VULNERS_USERINFO_URL}
+3. Generate an API key (credential type: `api_key`). Optional per-key scopes (`api`, `scan`, `report`) and an optional IP allowlist are configured there.
+
+Both URLs return an interactive challenge to non-browser clients -- they must be opened in a regular browser by the human operator.
+
+### Step 2 -- Use the credential
+
+Send the API key in the `X-Api-Key` request header on every MCP `tools/call`; it is forwarded to the Vulners API for that request only.
+
+### Step 3 -- Rotation and revocation
+
+Keys are listed, rotated and revoked at {VULNERS_USERINFO_URL}. If a previously working key starts returning 401/403 it was revoked or its IP allowlist no longer matches -- obtain a new key via Step 1; do not retry with the stale credential.
+
 ## Full registration walk-through
 
 For the complete, non-agent-specific walkthrough of Vulners account creation and key management, see {VULNERS_AUTH_MD_URL}.
@@ -117,7 +148,9 @@ ROBOTS_TXT = (
     "Allow: /llms.txt\n"
     "Allow: /auth.md\n"
     "Allow: /.well-known/\n"
+    "Content-Signal: search=yes, ai-input=yes, ai-train=yes\n"
     "# See https://mcp.vulners.com/llms.txt\n"
+    f"Sitemap: {SITEMAP_XML_URL}\n"
 )
 
 
@@ -252,5 +285,130 @@ def build_agents_index() -> Dict[str, Any]:
                 "card": MCP_SERVER_CARD_URL,
                 "dns": "_mcp._agents.vulners.com",
             },
+        ],
+    }
+
+
+# -------------------- sitemap.xml --------------------
+# The canonical set of agent-discovery URLs on this host, listed so crawlers
+# and scanners that only follow sitemap.xml (rather than robots.txt or the
+# individual documents' cross-links) still find every discovery surface.
+# Built from the same URL constants the routes themselves use, so it cannot
+# silently drift from what the server actually serves.
+_SITEMAP_URLS = (
+    ROOT_URL,
+    LLMS_TXT_URL,
+    AUTH_MD_URL,
+    MCP_SERVER_CARD_URL,
+    API_CATALOG_URL,
+    AGENTS_INDEX_URL,
+    AGENT_SKILLS_INDEX_URL,
+)
+
+
+def _build_sitemap_xml(urls: tuple[str, ...]) -> str:
+    entries = "\n".join(f"  <url><loc>{url}</loc></url>" for url in urls)
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        f"{entries}\n"
+        "</urlset>\n"
+    )
+
+
+SITEMAP_XML = _build_sitemap_xml(_SITEMAP_URLS)
+
+
+# -------------------- Agent Skills 0.2.0 --------------------
+# SKILL_MD is byte-for-byte the file served at
+# https://vulners.com/.well-known/agent-skills/vulners-mcp/SKILL.md (its
+# sha256 is pinned in tests/test_discovery_routes.py) so the two hosts
+# advertise the identical skill. Keep this content in sync with that file if
+# it ever changes -- do not edit it here without also updating vulners.com.
+SKILL_MD = """\
+---
+name: vulners-mcp
+description: Query Vulners for live, structured vulnerability intelligence (CVEs, advisories, exploits) and run software / Linux-package audits via the Vulners MCP server. Use when an agent needs ground-truth CVE data or to check whether a product/version is affected.
+---
+
+# Vulners MCP
+
+Vulners MCP exposes Vulners' continuously-collected vulnerability corpus
+(CVE ↔ advisories ↔ patches ↔ exploits) to AI agents over the Model Context
+Protocol, so copilots and agents fetch current, structured context on demand.
+
+- Hosted endpoint: https://mcp.vulners.com/mcp
+- Open source: https://github.com/vulnersCom/vulners-mcp
+
+## When to use
+
+Call Vulners MCP when you need current, citable facts about vulnerabilities
+instead of relying on training data: explaining a CVE, finding advisories or
+exploits, or assessing whether a specific product/version is affected.
+
+## Tools
+
+Intelligence:
+- `bulletin_by_id` — fetch full bulletin record(s) by ID (CVE or vendor bulletin).
+  Params: `id` (string | string[]). Batch multiple IDs in one call.
+- `search_lucene` — search the corpus. Params: `query` (string), `skip` (int),
+  `size` (int). Expand hits via `bulletin_by_id`.
+- `search_cpe` — resolve CPE strings. `query_autocomplete` — type-ahead for
+  vendors / products / CVEs.
+
+Assessment:
+- `audit_software` — audit an exact software version. Params: `body` (software
+  identifiers: CPE or name+version).
+- `audit_linux_packages` — audit a distro package list. Params: `os` (string),
+  `version` (string), `package` (string[]), `include_candidates?` (bool). Use
+  `get_supported_os` for valid distro identifiers.
+
+## Typical flow
+
+1. Discover with `search_lucene` / `search_cpe` / `query_autocomplete`, or start
+   from a known ID.
+2. Collect CVE IDs and batch them into `bulletin_by_id` for full, normalized
+   records with references.
+3. For assets, use `audit_software` / `audit_linux_packages`, then enrich
+   surfaced CVE IDs via `bulletin_by_id`.
+
+Outputs are deterministic JSON with references (vendor advisories / patches),
+exploitation / KEV indicators, and scoring metrics for triage.
+"""
+
+
+def _parse_skill_md_description(skill_md: str) -> str:
+    """Extract the ``description:`` field from SKILL_MD's YAML front matter.
+
+    Parsed at build time (rather than duplicated as a separate literal) so
+    ``build_agent_skills_index()`` can never drift from what SKILL_MD itself
+    says.
+    """
+    front_matter = skill_md.split("---", 2)[1]
+    for line in front_matter.splitlines():
+        if line.startswith("description:"):
+            return line[len("description:") :].strip()
+    raise ValueError("SKILL_MD front matter is missing a 'description' field")
+
+
+def build_agent_skills_index() -> Dict[str, Any]:
+    """Build the ``/.well-known/agent-skills/index.json`` payload.
+
+    Agent Skills discovery 0.2.0 (https://schemas.agentskills.io/discovery/0.2.0/).
+    The ``digest`` is computed from ``SKILL_MD`` at build time -- never a
+    literal -- so it can never drift from the bytes the SKILL.md route
+    actually serves; see the drift-guard test in
+    ``tests/test_discovery_routes.py`` that fetches both and compares them.
+    """
+    return {
+        "$schema": "https://schemas.agentskills.io/discovery/0.2.0/schema.json",
+        "skills": [
+            {
+                "name": "vulners-mcp",
+                "type": "skill-md",
+                "description": _parse_skill_md_description(SKILL_MD),
+                "url": AGENT_SKILL_MD_PATH,
+                "digest": f"sha256:{hashlib.sha256(SKILL_MD.encode()).hexdigest()}",
+            }
         ],
     }
