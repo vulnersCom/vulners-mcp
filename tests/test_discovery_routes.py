@@ -253,13 +253,44 @@ def test_server_card_authentication_block(client: TestClient) -> None:
     auth = data["authentication"]
     assert auth["anonymousDiscovery"] is True
     tool_invocation = auth["toolInvocation"]
-    assert tool_invocation["required"] is False
     assert tool_invocation["apiKeyHeader"] == "X-Api-Key"
     anon_tier = tool_invocation["anonymousTier"]
     assert anon_tier["allowed"] is True
     assert anon_tier["maxResultSize"] == settings.anon_max_size
     assert anon_tier["rateLimited"] is True
     assert auth["authMdUrl"] == "https://mcp.vulners.com/auth.md"
+
+
+def test_server_card_tool_invocation_required_true_without_anon_tier(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """VU-1948: ``toolInvocation.required`` must be truthful, not a hardcoded
+    ``False``. This deployment's test settings have no anonymous-tier key
+    configured (the default -- and, as of writing, prod's actual config
+    too), so a keyless ``tools/call`` is rejected: the card must say
+    ``required: true``, matching ``auth.resolve_effective_auth``'s
+    ``mode == "none"`` gate."""
+    monkeypatch.setattr(discovery.settings, "anon_api_key", "")
+    data = client.get("/.well-known/mcp/server-card.json").json()
+    auth = data["authentication"]
+    assert auth["anonymousDiscovery"] is True
+    assert auth["toolInvocation"]["required"] is True
+
+
+def test_server_card_tool_invocation_required_false_with_anon_tier(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When this deployment DOES have a dedicated anon-tier key configured,
+    a keyless ``tools/call`` goes through on it (see
+    ``auth.resolve_effective_auth``'s ``mode == "anon-tier"`` branch), so the
+    card must say ``required: false`` -- the same live setting the auth
+    middleware itself reads (``settings.anon_api_key``), not a separate,
+    divergent literal."""
+    monkeypatch.setattr(discovery.settings, "anon_api_key", "anon-dedicated-key")
+    data = client.get("/.well-known/mcp/server-card.json").json()
+    auth = data["authentication"]
+    assert auth["anonymousDiscovery"] is True
+    assert auth["toolInvocation"]["required"] is False
 
 
 def test_server_card_version_matches_initialize(client: TestClient) -> None:
