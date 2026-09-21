@@ -2,6 +2,7 @@ include:
   - project: 'infra/gitlab-ci'
     ref: main
     file: deploy.yaml
+  - template: Jobs/Container-Scanning.gitlab-ci.yml
 
 variables:
   COMMIT_IMAGE: ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}
@@ -10,6 +11,7 @@ variables:
 stages:
   - test
   - build
+  - scan
   - deploy
   - sync
 
@@ -27,6 +29,18 @@ test:
 
 build:
   extends: .build-template
+
+container_scanning:
+  stage: scan
+  needs: ["build"]
+  # a failed scan uploads no report and would look like "all findings fixed"
+  allow_failure: false
+  variables:
+    CS_IMAGE: ${COMMIT_IMAGE}
+    # only findings with an available fix are reported (unfixable kernel-header CVEs etc. are noise for a container)
+    CS_IGNORE_UNFIXED: "true"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
 deploy:prod:
   extends: .deploy_template_argocd
