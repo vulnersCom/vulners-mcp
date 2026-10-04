@@ -10,6 +10,7 @@ from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
 from . import discovery
 from .auth import AuthMiddleware, resolve_effective_auth
+from .models import AuditSoftwareRequest, AutocompleteRequest
 from .vulners_client import VulnersClient
 
 # Curated default field projection for `bulletin_by_id` -- a compact triage
@@ -468,7 +469,7 @@ async def search_lucene(
     description="🔍 VERSION-SPECIFIC SOFTWARE AUDIT 🔍 Audit specific software versions for known vulnerabilities. Use this when you have exact software version information (e.g., Chrome 138.0.7204.184). NEVER use search_lucene for version-specific software audits."
 )
 async def audit_software(
-    body: Annotated[Dict[str, Any], "Request body containing software list and audit parameters. Should include 'software' array with structured CPE objects (NOT CPE strings) and optional 'match' parameter ('partial' or 'full'). Each CPE object must have fields: part, vendor, product, version, update, edition, language, platform, target_sw, target_hw, other. USE THIS for specific software versions like 'Chrome 138.0.7204.184'."]
+    body: Annotated[AuditSoftwareRequest, "Request body containing software list and audit parameters. Should include 'software' array with structured CPE objects (NOT CPE strings) and optional 'match' parameter ('partial' or 'full'). Each CPE object has the CPE 2.3 fields: part, vendor, product, version, update, edition, language, sw_edition, target_sw, target_hw, other; vendor, product and version are required. USE THIS for specific software versions like 'Chrome 138.0.7204.184'."]
 ) -> Any:
     """🔍 VERSION-SPECIFIC SOFTWARE AUDIT 🔍
     Audit specific software versions for known vulnerabilities.
@@ -509,7 +510,7 @@ async def audit_software(
         "update": "*",                  # Update version (use "*" for any)
         "edition": "*",                 # Edition (use "*" for any)
         "language": "*",                # Language (use "*" for any)
-        "platform": "*",                # Platform (use "*" for any)
+        "sw_edition": "*",              # Software edition (use "*" for any)
         "target_sw": "*",               # Target software (use "*" for any, or "macos"/"windows" for OS-specific)
         "target_hw": "*",               # Target hardware (use "*" for any)
         "other": "*"                    # Other (use "*" for any)
@@ -528,7 +529,7 @@ async def audit_software(
             "update": "*",
             "edition": "*",
             "language": "*",
-            "platform": "*",
+            "sw_edition": "*",
             "target_sw": "*",
             "target_hw": "*",
             "other": "*"
@@ -541,7 +542,7 @@ async def audit_software(
             "update": "*",
             "edition": "*",
             "language": "*",
-            "platform": "*",
+            "sw_edition": "*",
             "target_sw": "*",
             "target_hw": "*",
             "other": "*"
@@ -571,7 +572,7 @@ async def audit_software(
             "update": "*",
             "edition": "*",
             "language": "*",
-            "platform": "*",
+            "sw_edition": "*",
             "target_sw": "*",
             "target_hw": "*",
             "other": "*"
@@ -590,7 +591,7 @@ async def audit_software(
             "update": "*",
             "edition": "*",
             "language": "*",
-            "platform": "*",
+            "sw_edition": "*",
             "target_sw": "windows",
             "target_hw": "*",
             "other": "*"
@@ -619,9 +620,12 @@ async def audit_software(
     4. Get comprehensive vulnerability information including patches, references, and exploitation data
     """
     client = await _get_client()
-    
+
+    # Strict-mode clients send unused optional fields as null, which the API
+    # rejects ("Input should be a valid string"). VU-2404.
+    payload = body.model_dump(exclude_none=True)
     # Hardcode the valid fields list to ensure API compatibility
-    body["fields"] = [
+    payload["fields"] = [
         "title",
         "short_description", 
         "description",
@@ -633,7 +637,7 @@ async def audit_software(
         "cvelistMetrics"
     ]
     
-    result = await client.audit_software(body, headers=_forward_headers())
+    result = await client.audit_software(payload, headers=_forward_headers())
     # TODO(MR tool-contract): fixture-derived models
     return result
 
@@ -739,7 +743,7 @@ async def audit_linux_packages(
     description="Autocomplete helper for search inputs (vendors, products, CVEs, etc.). Get search suggestions from the Vulners database."
 )
 async def query_autocomplete(
-    body: Annotated[Dict[str, Any], "Request body containing autocomplete parameters. Should include 'query' field with partial search term (e.g., 'openssl', 'CVE-2024-', 'microsoft windows')."]
+    body: Annotated[AutocompleteRequest, "Request body containing autocomplete parameters. Should include 'query' field with partial search term (e.g., 'openssl', 'CVE-2024-', 'microsoft windows')."]
 ) -> Any:
     """Autocomplete helper for search inputs (vendors, products, CVEs, etc.).
 
@@ -761,7 +765,7 @@ async def query_autocomplete(
       JSON suggestions that can be fed into search_lucene() or search_cpe().
     """
     client = await _get_client()
-    result = await client.query_autocomplete(body, headers=_forward_headers())
+    result = await client.query_autocomplete(body.model_dump(), headers=_forward_headers())
     # TODO(MR tool-contract): fixture-derived models
     return result
 

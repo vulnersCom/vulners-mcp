@@ -28,6 +28,7 @@ pytest-asyncio = "^1.4"
 respx = "^0.23"
 pytest-cov = "^7.1"
 jsonschema = "^4.26"
+openai-agents = ">=0.20,<0.23"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
