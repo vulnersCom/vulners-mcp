@@ -10,6 +10,7 @@ from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
 from . import discovery
 from .auth import AuthMiddleware, resolve_effective_auth
+from .metrics import MetricsMiddleware, MetricsSettings
 from .models import AuditSoftwareRequest, AutocompleteRequest
 from .vulners_client import VulnersClient
 
@@ -79,6 +80,11 @@ MAX_LUCENE_SIZE = 100
 from vulners_mcp._version import __version__  # noqa: E402  (local: avoid import-block churn)
 
 mcp = FastMCP("Vulners MCP", version=__version__)
+
+# Metrics (off unless MCP_METRICS_ENABLED / MCP_METRICS_MODE are set -- see
+# vulners_mcp.metrics). Added before the auth gate so rejected calls are
+# counted too.
+mcp.add_middleware(MetricsMiddleware(MetricsSettings.from_env()))
 
 # Auth gate + anonymous-tier policy (key resolution, size clamp, app-level
 # rate limit) for tools/call over HTTP -- see vulners_mcp.auth for the full
