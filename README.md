@@ -1,5 +1,7 @@
 # Vulners MCP Server
 
+<!-- mcp-name: io.github.vulnersCom/vulners-mcp -->
+
 **Vulners MCP** is a Model Context Protocol (MCP) server that provides seamless access to the Vulners vulnerability database through AI assistants like Claude Desktop. It enables security researchers and developers to query comprehensive vulnerability data, search for CVEs, analyze security bulletins, and audit software packages directly through natural language conversations.
 
 ## Features
@@ -12,7 +14,7 @@
   - Software/package vulnerability auditing
   - CPE search and autocomplete
   - Linux package vulnerability auditing
-- **Flexible Deployment**: Docker, local build, or PyPI installation
+- **Flexible Deployment**: prebuilt Docker image (`ghcr.io/vulnerscom/vulners-mcp`), PyPI package, or local build
 - **Environment-based Configuration**: Simple setup via environment variables
 
 ## Table of Contents
@@ -22,6 +24,7 @@
 - [Authentication](#authentication)  
 - [Quick Start with Claude Desktop](#quick-start-with-claude-desktop)  
 - [Installation & Deployment](#installation--deployment)  
+  - [PyPI](#pypi)
   - [Docker with run script](#docker-with-run-script)
   - [Docker (manual)](#docker-manual)  
   - [Build & run locally](#build--run-locally)  
@@ -36,7 +39,7 @@
 
 ## Requirements
 
-- Python 3.9+  
+- Python 3.13+ (for PyPI or a local build)  
 - Access to the Vulners API (valid API key and network connectivity)  
 - (For Docker) Docker engine  
 
@@ -104,13 +107,15 @@ precedence over the `VULNERS_API_KEY` fallback when both are set.
 
 The easiest way to use Vulners MCP is through Claude Desktop:
 
-### 1. Build the Docker Image
+### 1. Pull the Docker Image
 
 ```bash
-git clone https://github.com/vulnersCom/vulners-mcp.git
-cd vulners-mcp
-docker build -t vulners-mcp:latest .
+docker pull ghcr.io/vulnerscom/vulners-mcp:latest
 ```
+
+Images are published for `linux/amd64` and `linux/arm64`, tagged `latest`
+and with each release version (e.g. `1.15.0`). To build it yourself instead,
+see [Building from Source](#building-from-source).
 
 ### 2. Configure Claude Desktop
 
@@ -131,7 +136,7 @@ Add to your Claude Desktop configuration file:
         "--rm",
         "-e",
         "VULNERS_API_KEY=YOUR_API_KEY_HERE",
-        "vulners-mcp:latest"
+        "ghcr.io/vulnerscom/vulners-mcp:latest"
       ]
     }
   }
@@ -158,6 +163,20 @@ You can now ask Claude questions like:
 
 ## Installation & Deployment
 
+### PyPI
+
+```bash
+# stdio (Claude Desktop and other local MCP clients)
+VULNERS_API_KEY="your_api_key" uvx vulners-mcp
+
+# or install it
+pip install vulners-mcp
+VULNERS_API_KEY="your_api_key" vulners-mcp
+```
+
+For Claude Desktop, use `"command": "uvx", "args": ["vulners-mcp"]` with
+`VULNERS_API_KEY` in `"env"`.
+
 ### Docker with run script
 
 For easy HTTP mode deployment, use the provided run script:
@@ -166,7 +185,9 @@ For easy HTTP mode deployment, use the provided run script:
 ./run-docker.sh
 ```
 
-The server will start in HTTP mode at <http://0.0.0.0:8000/mcp>. No API key is
+It runs a locally built `vulners-mcp:latest` image (see
+[Building from Source](#building-from-source)). The server will start in HTTP
+mode at <http://0.0.0.0:8000/mcp>. No API key is
 needed to start it — see [Authentication](#authentication): each caller
 sends their own key as an `X-Api-Key` header per request.
 
@@ -180,7 +201,7 @@ docker run -d \
   -e MCP_TRANSPORT_MODE="http" \
   -e VULNERS_BASE_URL="https://vulners.com" \
   -p 8000:8000 \
-  vulners-mcp:latest
+  ghcr.io/vulnerscom/vulners-mcp:latest
 ```
 
 Callers then send their own key per request, e.g.:
@@ -200,7 +221,7 @@ stdio has no per-request header to carry one):
 ```bash
 docker run -i --rm \
   -e VULNERS_API_KEY="your_api_key" \
-  vulners-mcp:latest
+  ghcr.io/vulnerscom/vulners-mcp:latest
 ```
 
 ### Build & run locally
@@ -208,7 +229,7 @@ docker run -i --rm \
 ```bash
 git clone https://github.com/vulnersCom/vulners-mcp.git
 cd vulners-mcp
-poetry install 
+poetry install
 # Default transport is stdio, which is why a key belongs in the environment
 # here -- see Authentication above. Not needed/used if you instead run with
 # MCP_TRANSPORT_MODE=http.
@@ -232,6 +253,21 @@ poetry run python -m vulners_mcp
 | `FASTMCP_HOST`                 | string  | `0.0.0.0`             | Host/interface on which MCP server binds (HTTP mode only) |
 | `FASTMCP_PORT`                 | integer | `8000`                | Port for MCP server (HTTP mode only)                      |
 | `FASTMCP_STREAMABLE_HTTP_PATH` | string  | `/mcp`                | Path for the streamable MCP endpoint (HTTP mode only)     |
+
+**Metrics** (off by default). The Docker image ships both backends; for a
+PyPI install add the extra: `pip install "vulners-mcp[metrics]"` (or
+`[prometheus]` / `[statsd]`).
+
+| Variable                          | Type    | Default     | Description |
+|-----------------------------------|---------|-------------|-------------|
+| `MCP_METRICS_ENABLED`             | boolean | `false`     | Global switch. Metrics are collected only when this is `true` and `MCP_METRICS_MODE` is not `none`. |
+| `MCP_METRICS_MODE`                | string  | `none`      | `prometheus`, `statsd`, `both` or `none`. |
+| `MCP_METRICS_PREFIX`              | string  | `mcp`       | Prefix for every metric name (`mcp_tool_calls_total`, ...). |
+| `MCP_METRICS_PROM_HOST`           | string  | `127.0.0.1` | Bind address of the Prometheus `/metrics` endpoint. Set `0.0.0.0` in a container. |
+| `MCP_METRICS_PROM_PORT`           | integer | `9100`      | Port of the Prometheus `/metrics` endpoint. |
+| `MCP_METRICS_STATSD_HOST`         | string  | `127.0.0.1` | StatsD host. |
+| `MCP_METRICS_STATSD_PORT`         | integer | `8125`      | StatsD UDP port. |
+| `MCP_METRICS_STATSD_SAMPLE_RATE`  | number  | `1.0`       | StatsD sampling rate, `0.0`-`1.0`. |
 
 **Transport Mode:**
 
@@ -277,23 +313,13 @@ sticky routing.
 
 ## Testing
 
-Test the HTTP server using the provided test script:
-
 ```bash
-# Ensure the HTTP server is running
-docker ps | grep vulners-mcp
-
-# Run the test script
-python3 test_tools.py
+poetry install --with dev
+poetry run ruff check .
+poetry run pytest
 ```
 
-The test script will:
-
-1. Check server health
-2. Initialize MCP protocol
-3. List available tools
-4. Test CVE search functionality
-5. Test Lucene search
+The suite mocks the Vulners API, so no key or network access is needed.
 
 ---
 
@@ -375,6 +401,15 @@ git clone https://github.com/vulnersCom/vulners-mcp.git
 cd vulners-mcp
 docker build -t vulners-mcp:latest .
 ```
+
+### Releases
+
+Every push to `main` builds and publishes the Docker image to GHCR (`latest`
+and `<version>` tags). When `version` in `pyproject.toml` is new, the same
+workflow also publishes the package to PyPI and `server.json` to the MCP
+Registry. Bump the version in `pyproject.toml` and both places in
+`server.json` with every change (`tests/test_server_json.py` checks they
+match).
 
 ---
 

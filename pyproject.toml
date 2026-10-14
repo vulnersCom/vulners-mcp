@@ -1,6 +1,6 @@
 [project]
 name = "vulners-mcp"
-version = "1.14.0"
+version = "1.15.0"
 description = "MCP interface server fronting the Vulners API (https://vulners.com)"
 readme = "README.md"
 authors = [{name = "Vulners Team", email = "dev@vulners.com"}]
@@ -16,6 +16,18 @@ dependencies = [
     "pydantic-settings (>=2.11.0,<3.0.0)",
 ]
 
+[project.optional-dependencies]
+prometheus = ["prometheus_client (>=0.25.0)"]
+statsd = ["statsd (>=4.0.1)"]
+metrics = ["prometheus_client (>=0.25.0)", "statsd (>=4.0.1)"]
+
+[project.scripts]
+vulners-mcp = "vulners_mcp:main"
+
+[project.urls]
+Homepage = "https://github.com/vulnersCom/vulners-mcp"
+Repository = "https://github.com/vulnersCom/vulners-mcp"
+
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
@@ -29,6 +41,8 @@ respx = "^0.23"
 pytest-cov = "^7.1"
 jsonschema = "^4.26"
 openai-agents = ">=0.20,<0.23"
+prometheus-client = ">=0.25.0"
+statsd = ">=4.0.1"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

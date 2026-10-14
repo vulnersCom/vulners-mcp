@@ -18,7 +18,7 @@ RUN pip install "poetry==${POETRY_VERSION}"
 
 # deps layer
 COPY pyproject.toml poetry.lock* ./
-RUN poetry install --no-root --only main --no-ansi
+RUN poetry install --no-root --only main --extras metrics --no-ansi
 
 # app layer
 COPY vulners_mcp ./vulners_mcp

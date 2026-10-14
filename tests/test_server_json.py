@@ -24,13 +24,27 @@ def _load_server_json() -> dict:
     return json.loads(SERVER_JSON_PATH.read_text())
 
 
+def _package(data: dict, registry_type: str) -> dict:
+    return next(p for p in data["packages"] if p["registryType"] == registry_type)
+
+
 def test_server_json_version_matches_importlib_and_mcp_version() -> None:
     pkg_version = installed_version("vulners-mcp")
     data = _load_server_json()
 
     assert data["version"] == pkg_version
-    assert data["packages"][0]["version"] == pkg_version
+    assert _package(data, "pypi")["version"] == pkg_version
     assert mcp.version == pkg_version
+
+
+def test_server_json_oci_image_tag_matches_the_version() -> None:
+    """The release workflow pushes the image as ``ghcr.io/...:<version>``;
+    the registry pulls exactly the tag named here to verify ownership."""
+    data = _load_server_json()
+    image, _, tag = _package(data, "oci")["identifier"].rpartition(":")
+
+    assert image == "ghcr.io/vulnerscom/vulners-mcp"
+    assert tag == data["version"]
 
 
 def test_server_json_remote_matches_the_live_mcp_endpoint() -> None:
@@ -44,8 +58,18 @@ def test_server_json_remote_matches_the_live_mcp_endpoint() -> None:
 
 
 def test_server_json_stdio_package_transport_is_stdio() -> None:
-    """The pypi package (self-hosted / stdio use, see auth.md) is a
-    different install path from the hosted remote above -- it must keep
-    declaring stdio, not the hosted transport."""
+    """The pypi package and the Docker image (self-hosted / stdio use, see
+    auth.md) are a different install path from the hosted remote above --
+    they must keep declaring stdio, not the hosted transport."""
     data = _load_server_json()
-    assert data["packages"][0]["transport"]["type"] == "stdio"
+    for package in data["packages"]:
+        assert package["transport"]["type"] == "stdio", package["registryType"]
+
+
+def test_readme_carries_the_mcp_name_for_pypi_verification() -> None:
+    """The registry verifies the pypi package by finding ``mcp-name: <name>``
+    in its PyPI description, which is this README."""
+    readme = (SERVER_JSON_PATH.parent / "README.md").read_text()
+    name = _load_server_json()["name"]
+
+    assert f"<!-- mcp-name: {name} -->" in readme
