@@ -103,3 +103,34 @@ def test_composed_app_reuses_target_app_lifespan_object() -> None:
     fresh_mcp_app = mcp.http_app(path="/mcp", stateless_http=settings.mcp_stateless_http)
     composed_fresh = build_asgi_app(target_app=fresh_mcp_app)
     assert composed_fresh.router.lifespan_context is fresh_mcp_app.lifespan
+
+
+def test_mcp_endpoint_answers_with_and_without_trailing_slash() -> None:
+    """VU-2522: "https://mcp.vulners.com/mcp/" must work as-is. Starlette
+    used to answer it with a 307 to "/mcp", and behind the TLS-terminating
+    proxy that redirect pointed at plain http://, so clients configured with
+    the trailing slash (as the landing page itself advertised) could not
+    connect. Both spellings must reach the endpoint directly, no redirect.
+    """
+    fresh_mcp_app = mcp.http_app(path="/mcp", stateless_http=settings.mcp_stateless_http)
+    composed = build_asgi_app(target_app=fresh_mcp_app)
+    body = json.dumps(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
+                "clientInfo": {"name": "pytest", "version": "0"},
+            },
+        }
+    )
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+    }
+    with TestClient(composed, follow_redirects=False) as client:
+        for path in ("/mcp", "/mcp/"):
+            resp = client.post(path, headers=headers, content=body)
+            assert resp.status_code == 200, (path, resp.status_code, resp.headers)

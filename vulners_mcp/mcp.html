@@ -206,12 +206,66 @@
         <main>
             <section class="card">
                 <h2>Endpoint</h2>
-                <p><strong>Server URL:</strong> <code>https://mcp.vulners.com/mcp/</code></p>
+                <p><strong>Server URL:</strong> <code>https://mcp.vulners.com/mcp</code></p>
             </section>
 
             <section class="card">
                 <h2>Transport</h2>
                 <p>Use the <strong>Streamable HTTP</strong> </p>
+            </section>
+
+            <section class="card">
+                <h2>Connect your client</h2>
+                <p>Replace <code>&lt;YOUR_API_KEY&gt;</code> with your Vulners API key (see Authentication below).</p>
+
+                <h3>Claude Code</h3>
+                <pre><code>claude mcp add --transport http vulners https://mcp.vulners.com/mcp \
+  --header "X-Api-Key: &lt;YOUR_API_KEY&gt;"</code></pre>
+
+                <h3>Cursor</h3>
+                <p>Add to <code>~/.cursor/mcp.json</code>:</p>
+                <pre><code>{
+  "mcpServers": {
+    "vulners": {
+      "url": "https://mcp.vulners.com/mcp",
+      "headers": { "X-Api-Key": "&lt;YOUR_API_KEY&gt;" }
+    }
+  }
+}</code></pre>
+
+                <h3>VS Code</h3>
+                <p>Add to <code>.vscode/mcp.json</code>:</p>
+                <pre><code>{
+  "servers": {
+    "vulners": {
+      "type": "http",
+      "url": "https://mcp.vulners.com/mcp",
+      "headers": { "X-Api-Key": "&lt;YOUR_API_KEY&gt;" }
+    }
+  }
+}</code></pre>
+
+                <h3>Claude Desktop</h3>
+                <p>Run the server locally (needs <a href="https://docs.astral.sh/uv/" target="_blank"
+                        rel="noopener">uv</a>). Add to <code>claude_desktop_config.json</code> and restart Claude
+                    Desktop:</p>
+                <pre><code>{
+  "mcpServers": {
+    "vulners": {
+      "command": "uvx",
+      "args": ["vulners-mcp"],
+      "env": { "VULNERS_API_KEY": "&lt;YOUR_API_KEY&gt;" }
+    }
+  }
+}</code></pre>
+
+                <h3>Any other MCP client</h3>
+                <p>Point it at <code>https://mcp.vulners.com/mcp</code> over Streamable HTTP and send the
+                    <code>X-Api-Key</code> header. Docker images, self-hosting and the full tool reference:
+                    <a href="https://github.com/vulnersCom/vulners-mcp" target="_blank" rel="noopener">GitHub</a>
+                    · <a href="https://docs.vulners.com/docs/products/mcp/" target="_blank"
+                        rel="noopener">Documentation</a>.
+                </p>
             </section>
 
             <section class="card">
@@ -223,7 +277,7 @@
                         <pre><code>X-Api-Key: &lt;YOUR_API_KEY&gt;</code></pre>
                         <h3>Get your API key</h3>
                         <p>Follow the official steps here:<br>
-                            <a href="https://vulners.com/docs/api_reference/authentication/#how-to-obtain-api-key"
+                            <a href="https://docs.vulners.com/docs/api_reference/authentication/"
                                 target="_blank" rel="noopener">How to obtain API key →</a>
                         </p>
                     </div>
