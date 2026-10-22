@@ -161,6 +161,16 @@ def test_mcp_html_registers_webmcp_tools(client: TestClient) -> None:
     assert "vulners_bulletin_by_id" in body
 
 
+def test_mcp_html_advertises_canonical_server_url(client: TestClient) -> None:
+    """VU-2522: the landing page must hand out the exact endpoint URL, with
+    no trailing slash -- the slashed form used to redirect to plain http://
+    and broke clients that copied it."""
+    body = client.get("/").text
+    assert discovery.MCP_ENDPOINT == "https://mcp.vulners.com/mcp"
+    assert f"<code>{discovery.MCP_ENDPOINT}</code>" in body
+    assert discovery.MCP_ENDPOINT + "/" not in body
+
+
 def test_agent_skills_index(client: TestClient) -> None:
     resp = client.get("/.well-known/agent-skills/index.json")
     assert resp.status_code == 200

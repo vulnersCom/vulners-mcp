@@ -22,7 +22,9 @@ from typing import Sequence
 
 from fastmcp.server.http import StarletteWithLifespan
 from starlette.applications import Starlette
+from starlette.middleware import Middleware
 from starlette.routing import BaseRoute, Mount
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from .logging_utils import configure_logging
 
@@ -50,6 +52,25 @@ from .settings import settings  # noqa: E402
 mcp_app = mcp.http_app(path="/mcp", stateless_http=settings.mcp_stateless_http)
 
 
+class _McpTrailingSlash:
+    """Serve "/mcp/" exactly like "/mcp" instead of redirecting it.
+
+    Starlette answers "/mcp/" with a 307 to "/mcp", and behind the
+    TLS-terminating proxy that redirect points at plain http:// -- clients
+    configured with the trailing slash then fail to connect (VU-2522). The
+    path is rewritten before routing, so the request still goes through
+    ``mcp_app`` and all of its middleware.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and scope["path"] == "/mcp/":
+            scope = {**scope, "path": "/mcp", "raw_path": b"/mcp"}
+        await self.app(scope, receive, send)
+
+
 def build_asgi_app(
     extra_routes: Sequence[BaseRoute] | None = None,
     *,
@@ -74,7 +95,11 @@ def build_asgi_app(
     """
     mounted_app = target_app if target_app is not None else mcp_app
     routes: list[BaseRoute] = [*(extra_routes or []), Mount("/", app=mounted_app)]
-    return Starlette(routes=routes, lifespan=mounted_app.lifespan)
+    return Starlette(
+        routes=routes,
+        middleware=[Middleware(_McpTrailingSlash)],
+        lifespan=mounted_app.lifespan,
+    )
 
 
 app = build_asgi_app()

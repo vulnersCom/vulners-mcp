@@ -22,6 +22,7 @@
 - [Requirements](#requirements)  
 - [Obtaining Vulners API Key](#obtaining-vulners-api-key)  
 - [Authentication](#authentication)  
+- [Hosted server: mcp.vulners.com](#hosted-server-mcpvulnerscom)  
 - [Quick Start with Claude Desktop](#quick-start-with-claude-desktop)  
 - [Installation & Deployment](#installation--deployment)  
   - [PyPI](#pypi)
@@ -100,6 +101,41 @@ the (rate-limited, size-clamped) anonymous tier. To back the anonymous tier
 with a *separate*, dedicated key instead -- so it isn't also your own
 operator key -- set `VULNERS_MCP_ANON_API_KEY` explicitly; it always takes
 precedence over the `VULNERS_API_KEY` fallback when both are set.
+
+---
+
+## Hosted server: mcp.vulners.com
+
+Nothing to install: point any MCP client that speaks Streamable HTTP at
+
+```text
+https://mcp.vulners.com/mcp
+```
+
+and send your Vulners API key in the `X-Api-Key` header (see
+[Obtaining Vulners API Key](#obtaining-vulners-api-key)). For example:
+
+```bash
+# Claude Code
+claude mcp add --transport http vulners https://mcp.vulners.com/mcp \
+  --header "X-Api-Key: YOUR_API_KEY"
+```
+
+Cursor, in `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "vulners": {
+      "url": "https://mcp.vulners.com/mcp",
+      "headers": { "X-Api-Key": "YOUR_API_KEY" }
+    }
+  }
+}
+```
+
+The same snippets for other clients are on the connection guide at
+<https://mcp.vulners.com/>.
 
 ---
 
